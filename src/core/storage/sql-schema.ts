@@ -1,3 +1,10 @@
+import {
+  MAJIKAH_SQL_SCHEMA_MAJIK_CLIENT_STATE,
+  MAJIKAH_SQL_SCHEMA_MAJIK_KEYS,
+  MAJIKAH_SQL_TABLE_MAJIK_KEY,
+  MAJIKAH_SQL_TABLE_MAJIK_KEY_CLIENT_STATE,
+} from "@majikah/majik-key-client";
+
 type MajikahSQLSchema = string;
 
 /**
@@ -6,8 +13,8 @@ type MajikahSQLSchema = string;
  * - `MajikahSQLTable` becomes a strict union type
  */
 export const MAJIKAH_SQL_TABLES = {
-  MAJIK_CLIENT_STATE: "majik_client_state",
-  MAJIK_KEYS: "majik_keys",
+  MAJIK_CLIENT_STATE: MAJIKAH_SQL_TABLE_MAJIK_KEY_CLIENT_STATE,
+  MAJIK_KEYS: MAJIKAH_SQL_TABLE_MAJIK_KEY,
   MAJIK_CONTACTS: "majik_contacts",
   MAJIK_CONTACT_GROUPS: "majik_contact_groups",
   MAJIK_SIGNATURE_STAMPS: "majik_signature_stamps",
@@ -39,29 +46,6 @@ export function buildSchemaSQL(schemas: MajikahSQLSchema[]): MajikahSQLSchema {
     })
     .join("\n\n");
 }
-
-export const MAJIKAH_SQL_SCHEMA_MAJIK_CLIENT_STATE: MajikahSQLSchema = `
-CREATE TABLE IF NOT EXISTS ${MAJIKAH_SQL_TABLES.MAJIK_CLIENT_STATE} (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TEXT DEFAULT (datetime('now'))
-);
-`;
-
-export const MAJIKAH_SQL_SCHEMA_MAJIK_KEYS: MajikahSQLSchema = `
-CREATE TABLE IF NOT EXISTS ${MAJIKAH_SQL_TABLES.MAJIK_KEYS} (
-  id TEXT PRIMARY KEY,
-  json TEXT NOT NULL,
-  timestamp TEXT NOT NULL,
-  public_key TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_majik_keys_timestamp
-ON ${MAJIKAH_SQL_TABLES.MAJIK_KEYS}(timestamp);
-
-CREATE INDEX IF NOT EXISTS idx_majik_keys_public_key
-ON ${MAJIKAH_SQL_TABLES.MAJIK_KEYS}(public_key);
-`;
 
 export const MAJIKAH_SQL_SCHEMA_MAJIK_CONTACTS: MajikahSQLSchema = `
 CREATE TABLE IF NOT EXISTS ${MAJIKAH_SQL_TABLES.MAJIK_CONTACTS} (

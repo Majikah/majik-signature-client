@@ -75,29 +75,23 @@ import {
 } from "./core/stamp/majik-signature-stamp";
 import {
   MajikKeyClient,
+  MajikKeyClientBaseEvents,
   MajikKeyClientConfig,
 } from "@majikah/majik-key-client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type MajikSignatureClientEvents =
+  | MajikKeyClientBaseEvents
   | "sign"
   | "verify"
-  | "unlock"
-  | "lock"
-  | "error"
   | "new-stamp"
   | "removed-stamp"
-  | "new-account"
-  | "updated-account"
   | "new-contact"
   | "new-contact-group"
-  | "removed-account"
   | "removed-contact"
   | "removed-contact-group"
-  | "contact-group-change"
-  | "active-account-change"
-  | "restore-backup";
+  | "contact-group-change";
 
 export interface MajikSignatureClientConfig extends MajikKeyClientConfig {
   clientStateManager?: ClientStateManager; // narrower — OK, interfaces allow this
