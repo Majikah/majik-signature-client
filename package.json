@@ -1,0 +1,68 @@
+{
+  "name": "@majikah/majik-signature-client",
+  "type": "module",
+  "description": "Majik Signature Client is a hybrid post-quantum content signing and verification library for the Majikah ecosystem. Built on top of Majik Key Client, it provides tamper-proof, forgery-resistant digital signatures for any content format — using a dual-algorithm architecture that combines classical Ed25519 with post-quantum ML-DSA-87 (FIPS-204).",
+  "version": "0.6.3",
+  "license": "Apache-2.0",
+  "author": "Zelijah",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Majikah/majik-signature-client.git"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/jedlsf"
+  },
+  "keywords": [
+    "digital-signature",
+    "content-signing",
+    "content-verification",
+    "tamper-proof",
+    "tamper-detection",
+    "post-quantum",
+    "post-quantum-cryptography",
+    "hybrid-cryptography",
+    "ml-dsa",
+    "ml-dsa-87",
+    "ed25519",
+    "cryptography",
+    "signature-verification",
+    "data-integrity",
+    "content-authentication",
+    "majikah",
+    "majik-signature"
+  ],
+  "homepage": "https://github.com/Majikah/majik-signature-client#readme",
+  "bugs": {
+    "url": "https://github.com/Majikah/majik-signature-client/issues"
+  },
+  "scripts": {
+    "update": "npm install @majikah/majik-key@latest @majikah/majik-signature@latest @majikah/majik-contact@latest @majikah/majik-file@latest",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "package": "npm run build && npm version patch && git push && git push --tags",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@majikah/majik-cjson": "^0.0.3",
+    "@majikah/majik-contact": "^0.0.6",
+    "@majikah/majik-file": "^0.1.12",
+    "@majikah/majik-key": "^0.3.3",
+    "@majikah/majik-key-client": "^0.1.4",
+    "@majikah/majik-signature": "^0.2.1",
+    "@stablelib/ed25519": "^2.1.0",
+    "ed2curve": "^0.3.0",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
+  }
+}
