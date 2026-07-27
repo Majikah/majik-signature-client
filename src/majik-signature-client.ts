@@ -53,6 +53,8 @@ import {
 } from "@majikah/majik-contact";
 import { ClientStateManager } from "./core/client-state-manager";
 import {
+  ClientStateStorageAdapter,
+  InMemoryClientStateAdapter,
   InMemoryStampstoreAdapter,
   MajikSignatureStampStorageAdapter,
   UserAppPreferences,
@@ -165,6 +167,17 @@ export class MajikSignatureClient extends MajikKeyClient<
       "removed-contact-group",
       "contact-group-change",
     ]);
+  }
+
+  /**
+   * Override — without this, MajikKeyClient's constructor falls back to
+   * building a plain MajikKeyClientStateManager (ACCOUNT_ORDER only),
+   * and every call to getUserAppPreferences() etc. throws at runtime.
+   */
+  protected _createDefaultStateManager(
+    adapter?: ClientStateStorageAdapter,
+  ): ClientStateManager {
+    return new ClientStateManager(adapter ?? new InMemoryClientStateAdapter());
   }
 
   /** Expose the stamp manager for direct access if needed. */
