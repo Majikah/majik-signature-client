@@ -27,9 +27,7 @@
 
 import { MajikKeyClientStateManager } from "@majikah/majik-key-client";
 import {
-  AccountOrderValue,
   CLIENT_STATE_KEYS,
-  ClientStateEntry,
   ClientStateStorageAdapter,
   UserAppPreferences,
 } from "./storage/client-state/_types";

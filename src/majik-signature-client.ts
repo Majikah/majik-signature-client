@@ -243,52 +243,52 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Retrieve persisted user app prefernces, or `null` if none have been saved.
    */
   async getUserAppPreferences(): Promise<UserAppPreferences> {
-    return this._state.getUserAppPreferences();
+    return this.stateManager.getUserAppPreferences();
   }
 
   /**
    * Persist user app prefernces.
    */
   async setUserAppPreferences(preferences: UserAppPreferences): Promise<void> {
-    await this._state.setUserAppPreferences(preferences);
+    await this.stateManager.setUserAppPreferences(preferences);
   }
 
   /**
    * Remove persisted user app prefernces.
    */
   async removeUserAppPreferences(): Promise<void> {
-    await this._state.removeUserAppPreferences();
+    await this.stateManager.removeUserAppPreferences();
   }
 
   /**
    * Reset persisted user app prefernces to default settings.
    */
   async resetUserAppPreferences(): Promise<void> {
-    await this._state.resetUserAppPreferences();
+    await this.stateManager.resetUserAppPreferences();
   }
 
   async isAnalyticsEnabled(): Promise<boolean> {
-    const appPreferences = await this._state.getUserAppPreferences();
+    const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.privacy.shareAnalytics ?? false;
   }
 
   async isAutoSealEnabled(): Promise<boolean> {
-    const appPreferences = await this._state.getUserAppPreferences();
+    const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.signing.autoSeal ?? false;
   }
 
   async isAutoLockOnMinimizeEnabled(): Promise<boolean> {
-    const appPreferences = await this._state.getUserAppPreferences();
+    const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.security?.key?.autoLockOnMinimize ?? false;
   }
 
   async autoLockInterval(): Promise<number | undefined> {
-    const appPreferences = await this._state.getUserAppPreferences();
+    const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.security?.key?.autoLockInterval;
   }
 
   async isOnetimeUnlockEnabled(): Promise<boolean> {
-    const appPreferences = await this._state.getUserAppPreferences();
+    const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.security?.key?.onetimeUnlock ?? true;
   }
 
