@@ -6,7 +6,8 @@
  * or process restart. Useful for tests, SSR, and headless environments.
  */
 
-import type { ClientStateEntry, ClientStateStorageAdapter } from "./_types";
+import type { ClientStateEntry } from "@majikah/majik-key-client";
+import type {  ClientStateStorageAdapter } from "./_types";
 
 export class InMemoryClientStateAdapter implements ClientStateStorageAdapter {
   private _store: Map<string, ClientStateEntry> = new Map();

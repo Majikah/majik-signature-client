@@ -13,7 +13,7 @@
  * and contact adapters.
  */
 
-import type { ClientStateEntry } from "./_types";
+import type { ClientStateEntry } from "@majikah/majik-key-client";
 import { IDBGenericAdapter } from "../idb-adapter";
 
 const IDB_DB_NAME = "majik-client-state";

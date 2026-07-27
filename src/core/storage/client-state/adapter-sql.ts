@@ -18,8 +18,9 @@
  * the adapter contract is identical to the IDB and memory variants.
  */
 
-import type { ClientStateEntry, ClientStateStorageAdapter } from "./_types";
+import type { ClientStateStorageAdapter } from "./_types";
 import type { SQLiteDatabase } from "../sql-db-manager";
+import type { ClientStateEntry } from "@majikah/majik-key-client";
 
 const TABLE = "majik_client_state";
 
