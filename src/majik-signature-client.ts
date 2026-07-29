@@ -9,10 +9,10 @@
  * to Majik Signature: the contact directory, stamps, signing, verification,
  * seal/multi-sig, and backup/restore.
  *
- * Designed to be used alongside MajikMessage in the same webapp.
+ * Designed to be used alongside MajikSignature in the same webapp.
  * Accounts are automatically shared via the base class's keyManager.
  * Contacts are shared by passing the same MajikContactManager instance
- * to both MajikMessage and MajikSignatureClient at construction time.
+ * to both MajikSignature and MajikSignatureClient at construction time.
  */
 
 import { MajikKey, MajikKeyAddress } from "@majikah/majik-key";
@@ -282,6 +282,11 @@ export class MajikSignatureClient extends MajikKeyClient<
   async isAutoSealEnabled(): Promise<boolean> {
     const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.signing.autoSeal ?? false;
+  }
+
+  async isDefaultToTSAEnabled(): Promise<boolean> {
+    const appPreferences = await this.stateManager.getUserAppPreferences();
+    return appPreferences.signing.defaultToTSA ?? false;
   }
 
   async isAutoLockOnMinimizeEnabled(): Promise<boolean> {

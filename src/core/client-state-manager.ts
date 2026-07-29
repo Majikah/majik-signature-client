@@ -103,7 +103,7 @@ export const DEFAULT_USER_APP_PREFERENCES: UserAppPreferences = {
       maxCount: 25,
     },
   },
-  signing: { autoSeal: false },
+  signing: { autoSeal: false, defaultToTSA: false },
   privacy: {
     shareAnalytics: true,
   },

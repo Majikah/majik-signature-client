@@ -55,6 +55,7 @@ export interface HistoryPreferences {
 
 export interface SigningPreferences {
   autoSeal?: boolean;
+  defaultToTSA?: boolean;
 }
 
 // export interface DashboardPreferences {

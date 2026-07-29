@@ -54,7 +54,7 @@
   "dependencies": {
     "@majikah/majik-cjson": "^0.0.3",
     "@majikah/majik-contact": "^0.0.6",
-    "@majikah/majik-file": "^0.1.12",
+    "@majikah/majik-file": "^0.2.3",
     "@majikah/majik-key": "^0.3.3",
     "@majikah/majik-key-client": "^0.1.5",
     "@majikah/majik-signature": "^0.2.1",
@@ -63,6 +63,6 @@
     "fflate": "^0.8.3"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1"
+    "@types/node": "^26.1.2"
   }
 }

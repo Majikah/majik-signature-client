@@ -105,7 +105,6 @@ export class MajikSignatureStamp {
       id,
       data,
       identity,
-      context: "user_upload",
       originalName: name,
       mimeType,
       userId: identity.fingerprint,
