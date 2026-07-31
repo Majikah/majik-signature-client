@@ -20,7 +20,7 @@ Designed to be used natively within the Majikah ecosystem, it inherits all core 
 You can instantiate and fully hydrate the client and its storage adapters in a single call using the static `create` method.
 
 ```typescript
-import { MajikSignatureClient } from "your-path-here"; // Update with actual package export
+import { MajikSignatureClient } from "@majikah/majik-signature-client";
 
 // 1. Initialize and hydrate the client state, keys, contacts, and stamps
 const client = await MajikSignatureClient.create({

@@ -21,6 +21,7 @@ import { MajikSignature } from "@majikah/majik-signature";
 import type {
   EnvelopeInfo,
   ExpectedSigner,
+  MajikSignatureEnvelope,
   MajikSignatureJSON,
   MajikSignerPublicKeys,
   SealInfo,
@@ -1156,6 +1157,61 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   /**
+   * Sign a file with a detached signature envelope.
+   *
+   * @example
+   *   const { blob: signedPdf } = await majik.signFileDetached(pdfBlob);
+   *
+   * @example — non-active account
+   *   const { blob } = await majik.signFileDetached(wavBlob, { accountId: "acc_xyz" });
+   */
+  async signFileDetached(
+    file: Blob,
+    options?: {
+      contentType?: string;
+      timestamp?: string;
+      mimeType?: string;
+      accountId?: string;
+      expectedSigners?: ExpectedSigner[];
+    },
+  ): Promise<ReturnType<typeof MajikSignature.signFileDetached>> {
+    const id = options?.accountId ?? this.getActiveAccount()?.id;
+    if (!id)
+      throw new Error("No active account — call setActiveAccount() first");
+
+    let key: ReturnType<typeof this._keys.get> | undefined;
+    let shouldRelock = false;
+
+    try {
+      await this._keys.ensureUnlocked(id);
+      key = this._keys.get(id);
+      if (!key) throw new Error(`Account not found in keystore: "${id}"`);
+      if (!key.hasSigningKeys) {
+        throw new Error(
+          `Account "${id}" has no signing keys. ` +
+            `Re-import via importAccountFromMnemonicBackup() to enable signing.`,
+        );
+      }
+
+      shouldRelock = !(await this.isOnetimeUnlockEnabled());
+
+      const signedResponse = await MajikSignature.signFileDetached(file, key, {
+        contentType: options?.contentType,
+        timestamp: options?.timestamp,
+        mimeType: options?.mimeType,
+        expectedSigners: options?.expectedSigners,
+      });
+
+      return signedResponse;
+    } catch (err) {
+      this._emit("error", err, { context: "signFileDetached" });
+      throw err;
+    } finally {
+      if (shouldRelock) key?.lock();
+    }
+  }
+
+  /**
    * Sign multiple file blobs with the active (or specified) account in one call.
    *
    * @example
@@ -1330,7 +1386,71 @@ export class MajikSignatureClient extends MajikKeyClient<
           expectedSignerId: firstSig.signerId,
           mimeType: options?.mimeType,
         },
-        true,
+      );
+      return results[0];
+    } catch (err) {
+      this._emit("error", err, { context: "verifyFile" });
+      throw err;
+    }
+  }
+
+  /**
+   * Verify a file's detached signature.
+   *
+   * @example — verify a signed PDF's detached signature against a known contact
+   *   const result = await majik.verifyFileDetached(signedPdf, envelope, { contactId: "contact_abc" });
+   *   if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
+   */
+  async verifyFileDetached(
+    file: Blob,
+    envelope: MajikSignatureEnvelope,
+    options?: {
+      contactId?: string;
+      publicKeyBase64?: string;
+      key?: MajikKey;
+      expectedSignerId?: string;
+      mimeType?: string;
+    },
+  ): Promise<VerificationResult & { handler?: string; reason?: string }> {
+    try {
+      const publicKeys = await this._resolveSignerPublicKeys(options);
+
+      if (publicKeys) {
+        const results = await MajikSignature.verifyFileDetached(
+          file,
+          envelope,
+          publicKeys,
+          {
+            expectedSignerId: options?.expectedSignerId,
+            mimeType: options?.mimeType,
+          },
+        );
+        return results[0];
+      }
+
+      // No signer provided — extract and use self-reported keys from first signature.
+      const extracted = await MajikSignature.extractFrom(file, {
+        mimeType: options?.mimeType,
+      });
+      if (!extracted.length) {
+        return {
+          valid: false,
+          signerId: "",
+          contentHash: "",
+          timestamp: new Date().toISOString(),
+          reason: "No embedded signature found",
+        };
+      }
+
+      const firstSig = extracted[0];
+      const results = await MajikSignature.verifyFileDetached(
+        file,
+        envelope,
+        firstSig.extractPublicKeys(),
+        {
+          expectedSignerId: firstSig.signerId,
+          mimeType: options?.mimeType,
+        },
       );
       return results[0];
     } catch (err) {
