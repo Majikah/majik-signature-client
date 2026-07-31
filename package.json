@@ -43,7 +43,7 @@
     "url": "https://github.com/Majikah/majik-signature-client/issues"
   },
   "scripts": {
-    "update": "npm install @majikah/majik-key@latest @majikah/majik-signature@latest @majikah/majik-contact@latest @majikah/majik-file@latest",
+    "update": "npm install @majikah/majik-key@latest @majikah/majik-key-client@latest @majikah/majik-signature@latest @majikah/majik-contact@latest @majikah/majik-file@latest",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
@@ -55,8 +55,8 @@
     "@majikah/majik-cjson": "^0.0.3",
     "@majikah/majik-contact": "^0.0.6",
     "@majikah/majik-file": "^0.2.4",
-    "@majikah/majik-key": "^0.3.3",
-    "@majikah/majik-key-client": "^0.1.5",
+    "@majikah/majik-key": "^0.3.4",
+    "@majikah/majik-key-client": "^0.1.6",
     "@majikah/majik-signature": "^0.2.1",
     "@stablelib/ed25519": "^2.1.0",
     "ed2curve": "^0.3.0",

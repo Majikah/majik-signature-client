@@ -15,5 +15,4 @@ export { DEFAULT_USER_APP_PREFERENCES } from "./core/client-state-manager";
 
 export * from "./core/utils/utilities";
 
-export * from "./core/identity";
 export { migrateMajikMessageJSON } from "./core/contacts/majik-contact-migration";

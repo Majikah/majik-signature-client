@@ -3,6 +3,7 @@
  * ================================ */
 
 import { MnemonicJSON } from "@majikah/majik-key";
+import { MnemonicLanguage } from "@majikah/majik-key/dist/core/crypto/wordlist";
 
 // utils/utilities.ts
 export function arrayToBase64(data: Uint8Array): string {
@@ -76,6 +77,7 @@ export function seedToJSON(
   seed: string,
   id: string,
   phrase?: string,
+  language: MnemonicLanguage = "en",
 ): MnemonicJSON {
   return {
     seed: seed
@@ -85,6 +87,7 @@ export function seedToJSON(
       .filter(Boolean),
     id,
     phrase,
+    language,
   };
 }
 
