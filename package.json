@@ -56,7 +56,7 @@
     "@majikah/majik-contact": "^0.0.6",
     "@majikah/majik-file": "^0.2.4",
     "@majikah/majik-key": "^0.3.4",
-    "@majikah/majik-key-client": "^0.1.7",
+    "@majikah/majik-key-client": "^0.1.8",
     "@majikah/majik-signature": "^0.2.1",
     "@stablelib/ed25519": "^2.1.0",
     "ed2curve": "^0.3.0",
