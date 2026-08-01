@@ -2,7 +2,7 @@
   "name": "@majikah/majik-signature-client",
   "type": "module",
   "description": "Majik Signature Client is a hybrid post-quantum content signing and verification library for the Majikah ecosystem. Built on top of Majik Key Client, it provides tamper-proof, forgery-resistant digital signatures for any content format — using a dual-algorithm architecture that combines classical Ed25519 with post-quantum ML-DSA-87 (FIPS-204).",
-  "version": "0.6.14",
+  "version": "0.6.15",
   "license": "Apache-2.0",
   "author": "Zelijah",
   "main": "./dist/index.js",
