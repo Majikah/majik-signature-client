@@ -22,6 +22,7 @@ import type {
   EnvelopeInfo,
   ExpectedSigner,
   MajikSignatureEnvelope,
+  MajikSignatureEnvelopeJSON,
   MajikSignatureJSON,
   MajikSignerPublicKeys,
   SealInfo,
@@ -1403,7 +1404,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    */
   async verifyFileDetached(
     file: Blob,
-    envelope: MajikSignatureEnvelope,
+    envelope: MajikSignatureEnvelope | MajikSignatureEnvelopeJSON,
     options?: {
       contactId?: string;
       publicKeyBase64?: string;

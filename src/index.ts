@@ -11,6 +11,8 @@ export * from "./core/storage";
 
 export * from "./core/stamp/majik-signature-stamp";
 
+export * from "@majikah/majik-key";
+
 export { DEFAULT_USER_APP_PREFERENCES } from "./core/client-state-manager";
 
 export * from "./core/utils/utilities";
