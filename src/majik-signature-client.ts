@@ -25,6 +25,7 @@ import type {
   MajikSignatureEnvelopeJSON,
   MajikSignatureJSON,
   MajikSignerPublicKeys,
+  MajikTimestamp,
   SealInfo,
   SealVerificationResult,
   SignatoriesFilter,
@@ -1179,6 +1180,7 @@ export class MajikSignatureClient extends MajikKeyClient<
         | MajikSignatureEnvelopeJSON
         | Uint8Array
         | Blob;
+      tsa?: MajikTimestamp;
     },
   ): Promise<ReturnType<typeof MajikSignature.signFileDetached>> {
     const id = options?.accountId ?? this.getActiveAccount()?.id;
@@ -1206,6 +1208,8 @@ export class MajikSignatureClient extends MajikKeyClient<
         timestamp: options?.timestamp,
         mimeType: options?.mimeType,
         expectedSigners: options?.expectedSigners,
+        existingEnvelope: options?.existingEnvelope,
+        tsa: options?.tsa,
       });
 
       return signedResponse;
