@@ -1174,6 +1174,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       mimeType?: string;
       accountId?: string;
       expectedSigners?: ExpectedSigner[];
+      existingEnvelope?:
+        | MajikSignatureEnvelope
+        | MajikSignatureEnvelopeJSON
+        | Uint8Array
+        | Blob;
     },
   ): Promise<ReturnType<typeof MajikSignature.signFileDetached>> {
     const id = options?.accountId ?? this.getActiveAccount()?.id;
@@ -1404,7 +1409,11 @@ export class MajikSignatureClient extends MajikKeyClient<
    */
   async verifyFileDetached(
     file: Blob,
-    envelope: MajikSignatureEnvelope | MajikSignatureEnvelopeJSON,
+    envelope:
+      | MajikSignatureEnvelope
+      | MajikSignatureEnvelopeJSON
+      | Uint8Array
+      | Blob,
     options?: {
       contactId?: string;
       publicKeyBase64?: string;
