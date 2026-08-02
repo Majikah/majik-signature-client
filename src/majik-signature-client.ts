@@ -17,11 +17,13 @@
 
 import { MajikKey, MajikKeyAddress } from "@majikah/majik-key";
 
-import { MajikSignature } from "@majikah/majik-signature";
+import {
+  MajikSignature,
+  MajikSignatureEnvelope,
+} from "@majikah/majik-signature";
 import type {
   EnvelopeInfo,
   ExpectedSigner,
-  MajikSignatureEnvelope,
   MajikSignatureEnvelopeJSON,
   MajikSignatureJSON,
   MajikSignerPublicKeys,
@@ -1442,24 +1444,26 @@ export class MajikSignatureClient extends MajikKeyClient<
         return results[0];
       }
 
-      // No signer provided — extract and use self-reported keys from first signature.
-      const extracted = await MajikSignature.extractFrom(file, {
-        mimeType: options?.mimeType,
-      });
-      if (!extracted.length) {
+      // No signer provided — resolve the *envelope* (not the file, which for
+      // a detached signature never carries an embedded envelope) and use the
+      // self-reported keys from its first signature.
+      const resolvedEnvelope = await MajikSignatureEnvelope.from(envelope);
+      const firstSigJson = resolvedEnvelope.signatures[0];
+
+      if (!firstSigJson) {
         return {
           valid: false,
           signerId: "",
           contentHash: "",
           timestamp: new Date().toISOString(),
-          reason: "No embedded signature found",
+          reason: "Envelope contains no signatures",
         };
       }
 
-      const firstSig = extracted[0];
+      const firstSig = MajikSignature.fromJSON(firstSigJson);
       const results = await MajikSignature.verifyFileDetached(
         file,
-        envelope,
+        resolvedEnvelope,
         firstSig.extractPublicKeys(),
         {
           expectedSignerId: firstSig.signerId,
@@ -1468,7 +1472,146 @@ export class MajikSignatureClient extends MajikKeyClient<
       );
       return results[0];
     } catch (err) {
-      this._emit("error", err, { context: "verifyFile" });
+      this._emit("error", err, { context: "verifyFileDetached" }); // was "verifyFile" — also a copy-paste leftover
+      throw err;
+    }
+  }
+
+  // ── Verify ALL signatures (embedded) ──────────────────────────────────────
+
+  /**
+   * Verify every embedded signature in a file, each checked against its own
+   * self-reported public keys.
+   *
+   * ⚠️ Self-reported: for each result, cross-check `signerId` against your
+   * contact directory (see `resolveSignerLabel`) before trusting authenticity.
+   * A tampered envelope can carry a signature whose self-reported keys pass
+   * verification but don't belong to who they claim to be.
+   */
+  async verifyFileAllSignatures(
+    file: Blob,
+    options?: { mimeType?: string },
+  ): Promise<VerifyResult[]> {
+    try {
+      const signatures = await this.extractSignature(file, options);
+      if (!signatures.length) {
+        return [
+          {
+            valid: false,
+            signerId: "",
+            contentHash: "",
+            timestamp: new Date().toISOString(),
+            reason: "No embedded signature found",
+          } as VerifyResult,
+        ];
+      }
+
+      const strippedBlob = await this.stripSignature(file, options);
+      const contentBytes = new Uint8Array(await strippedBlob.arrayBuffer());
+
+      return signatures.map((sig) => {
+        try {
+          const result = MajikSignature.verify(
+            contentBytes,
+            sig,
+            sig.extractPublicKeys(),
+          );
+          return {
+            ...result,
+            signerLabel: result.signerId
+              ? this.resolveSignerLabel(result.signerId)
+              : undefined,
+          };
+        } catch (err) {
+          return {
+            valid: false,
+            signerId: sig.signerId,
+            contentHash: sig.contentHash,
+            timestamp: sig.timestamp,
+            reason: err instanceof Error ? err.message : String(err),
+          } as VerifyResult;
+        }
+      });
+    } catch (err) {
+      this._emit("error", err, { context: "verifyFileAllSignatures" });
+      throw err;
+    }
+  }
+
+  // ── Verify ALL signatures (detached) ──────────────────────────────────────
+
+  /**
+   * Verify every signature inside a detached envelope against the stripped
+   * content, each checked against its own self-reported public keys.
+   */
+  async verifyFileDetachedAllSignatures(
+    file: Blob,
+    envelope:
+      | MajikSignatureEnvelope
+      | MajikSignatureEnvelopeJSON
+      | Uint8Array
+      | Blob,
+    options?: { mimeType?: string },
+  ): Promise<VerifyResult[]> {
+    try {
+      const resolvedEnvelope = await MajikSignatureEnvelope.from(envelope);
+
+      // Same integrity check MajikSignatureEmbed.verify()/verifyDetached() run
+      // internally — worth keeping here since we're bypassing that shared path.
+      const integrity = resolvedEnvelope.verifyAllowlistIntegrity();
+      if (!integrity.valid) {
+        return [
+          {
+            valid: false,
+            signerId: "",
+            contentHash: "",
+            timestamp: new Date().toISOString(),
+            reason: integrity.reason,
+          } as VerifyResult,
+        ];
+      }
+
+      const signatures = resolvedEnvelope.signatures;
+      if (!signatures.length) {
+        return [
+          {
+            valid: false,
+            signerId: "",
+            contentHash: "",
+            timestamp: new Date().toISOString(),
+            reason: "Envelope contains no signatures",
+          } as VerifyResult,
+        ];
+      }
+
+      const contentBytes = new Uint8Array(await file.arrayBuffer());
+
+      return signatures.map((sigJson) => {
+        try {
+          const sig = MajikSignature.fromJSON(sigJson);
+          const result = MajikSignature.verify(
+            contentBytes,
+            sig,
+            sig.extractPublicKeys(),
+          );
+          return {
+            ...result,
+            signerLabel: result.signerId
+              ? this.resolveSignerLabel(result.signerId)
+              : undefined,
+          };
+        } catch (err) {
+          return {
+            valid: false,
+            signerId: sigJson.signerId,
+            contentHash: sigJson.contentHash,
+            timestamp: sigJson.timestamp,
+            reason: err instanceof Error ? err.message : String(err),
+          } as VerifyResult;
+        }
+      });
+    } catch (err) {
+      this._emit("error", err, { context: "verifyFileDetachedAllSignatures" });
       throw err;
     }
   }
