@@ -56,6 +56,7 @@ export interface HistoryPreferences {
 export interface SigningPreferences {
   autoSeal?: boolean;
   defaultToTSA?: boolean;
+  defaultToDetached?: boolean;
 }
 
 // export interface DashboardPreferences {

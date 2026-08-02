@@ -294,6 +294,11 @@ export class MajikSignatureClient extends MajikKeyClient<
     return appPreferences.signing.defaultToTSA ?? false;
   }
 
+  async isDefaultToDetachedEnabled(): Promise<boolean> {
+    const appPreferences = await this.stateManager.getUserAppPreferences();
+    return appPreferences.signing.defaultToDetached ?? false;
+  }
+
   async isAutoLockOnMinimizeEnabled(): Promise<boolean> {
     const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.security?.key?.autoLockOnMinimize ?? false;
