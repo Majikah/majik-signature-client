@@ -8,9 +8,11 @@
  * adapter only moves bytes.
  */
 
-import { BASE_CLIENT_STATE_KEYS, ClientStateEntry } from "@majikah/majik-key-client";
+import {
+  BASE_CLIENT_STATE_KEYS,
+  ClientStateEntry,
+} from "@majikah/majik-key-client";
 import { MajikStorageAdapter } from "../storage-adapter";
-
 
 // ---------------------------------------------------------------------------
 // Well-known state keys
@@ -57,11 +59,17 @@ export interface SigningPreferences {
   autoSeal?: boolean;
   defaultToTSA?: boolean;
   defaultToDetached?: boolean;
+  autosave?: {
+    afterSign?: AutosavePreferences;
+    afterSeal?: AutosavePreferences;
+    afterNotary?: AutosavePreferences;
+  };
 }
 
-// export interface DashboardPreferences {
-//   autodecrypt?: boolean;
-// }
+export interface AutosavePreferences {
+  enabled?: boolean;
+  defaultPath?: string;
+}
 
 export interface PrivacyPreferences {
   shareAnalytics?: boolean;

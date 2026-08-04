@@ -100,10 +100,22 @@ export const DEFAULT_USER_APP_PREFERENCES: UserAppPreferences = {
   general: {
     history: {
       enabled: true,
-      maxCount: 25,
+      maxCount: 100,
     },
   },
-  signing: { autoSeal: false, defaultToTSA: false, defaultToDetached: false },
+  signing: {
+    autoSeal: false,
+    defaultToTSA: false,
+    defaultToDetached: false,
+    autosave: {
+      afterSign: {
+        enabled: false,
+      },
+      afterSeal: {
+        enabled: false,
+      },
+    },
+  },
   privacy: {
     shareAnalytics: true,
   },

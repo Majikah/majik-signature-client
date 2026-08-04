@@ -83,6 +83,25 @@ import {
   MajikKeyClientBaseEvents,
   MajikKeyClientConfig,
 } from "@majikah/majik-key-client";
+import { HistoryLogManager } from "./core/log/history-log-manager";
+import { UserActivityLogManager } from "./core/log/user-activity-log-manager";
+import { HistoryLogStorageAdapter } from "./core/storage/logs/history/_types";
+import { UserActivityLogStorageAdapter } from "./core/storage/logs/user-activity/_types";
+import {
+  CreateHistoryLogOptions,
+  HistoryLog,
+} from "./core/log/core/history-log";
+import {
+  CreateUserActivityLogOptions,
+  UserActivityLog,
+} from "./core/log/core/user-activity-log";
+import {
+  AuditActions,
+  HistorySource,
+  HistorySources,
+  HistoryStatuses,
+  HistoryTypes,
+} from "./core/log/core/enums";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,15 +115,21 @@ type MajikSignatureClientEvents =
   | "new-contact-group"
   | "removed-contact"
   | "removed-contact-group"
-  | "contact-group-change";
+  | "contact-group-change"
+  | "history-log"
+  | "activity-log";
 
 export interface MajikSignatureClientConfig extends MajikKeyClientConfig {
-  clientStateManager?: ClientStateManager; // narrower — OK, interfaces allow this
+  clientStateManager?: ClientStateManager;
   contactManager?: MajikContactManager;
   stampsManager?: MajikSignatureStampManager;
+  historyManager?: HistoryLogManager; // NEW
+  activityManager?: UserActivityLogManager; // NEW
   adapters?: MajikKeyClientConfig["adapters"] & {
     contacts?: MajikContactManagerAdapters;
     stamps?: MajikSignatureStampStorageAdapter;
+    historyLogs?: HistoryLogStorageAdapter; // NEW
+    userActivityLogs?: UserActivityLogStorageAdapter; // NEW
   };
 }
 
@@ -139,6 +164,8 @@ export class MajikSignatureClient extends MajikKeyClient<
 > {
   private _contacts: MajikContactManager;
   private _stamps: MajikSignatureStampManager;
+  private _history: HistoryLogManager; // NEW
+  private _activity: UserActivityLogManager; // NEW
 
   constructor(config: MajikSignatureClientConfig) {
     super(config);
@@ -153,8 +180,14 @@ export class MajikSignatureClient extends MajikKeyClient<
         config.adapters?.stamps ?? new InMemoryStampstoreAdapter(),
       );
 
-    // Base already registers: new-account, removed-account, updated-account,
-    // active-account-change, unlock, lock, error, restore-backup.
+    this._history =
+      config.historyManager ??
+      new HistoryLogManager(config.adapters?.historyLogs);
+
+    this._activity =
+      config.activityManager ??
+      new UserActivityLogManager(config.adapters?.userActivityLogs);
+
     this._registerEventNames([
       "sign",
       "verify",
@@ -165,6 +198,8 @@ export class MajikSignatureClient extends MajikKeyClient<
       "removed-contact",
       "removed-contact-group",
       "contact-group-change",
+      "history-log",
+      "activity-log",
     ]);
   }
 
@@ -182,6 +217,16 @@ export class MajikSignatureClient extends MajikKeyClient<
   /** Expose the stamp manager for direct access if needed. */
   get stampManager(): MajikSignatureStampManager {
     return this._stamps;
+  }
+
+  /** Expose the history log manager for direct access if needed. */
+  get historyManager(): HistoryLogManager {
+    return this._history;
+  }
+
+  /** Expose the user activity log manager for direct access if needed. */
+  get activityManager(): UserActivityLogManager {
+    return this._activity;
   }
 
   // ==========================================================================
@@ -209,6 +254,15 @@ export class MajikSignatureClient extends MajikKeyClient<
     await this._contacts.clear();
     await this._stamps.adapter.clear();
     this._stamps = new MajikSignatureStampManager(this._stamps.adapter);
+
+    // Deliberately NOT clearing _history/_activity here — see class docblock
+    // note above. Audit trail must survive a key-data reset; record the
+    // reset itself instead of erasing what came before it.
+    await this._recordActivity(undefined, {
+      reference_id: "key-data-reset",
+      action: AuditActions.KEY_DATA_RESET, // ⚠️ verify this member exists
+      metadata: { at: new Date().toISOString() },
+    });
   }
 
   // ── Hydration ─────────────────────────────────────────────────────────────
@@ -230,6 +284,8 @@ export class MajikSignatureClient extends MajikKeyClient<
     await this._hydrateKeys();
     await this._contacts.hydrate();
     await this._stamps.hydrate();
+    await this._history.hydrate();
+    await this._activity.hydrate();
     await this._hydrateState();
     await this._hydrateOwnAccounts();
     await this._restoreAccountOrder();
@@ -245,6 +301,208 @@ export class MajikSignatureClient extends MajikKeyClient<
     const client = new this(config);
     await client.hydrate();
     return client;
+  }
+
+  // ── Logging (private, non-throwing) ─────────────────────────────────────
+
+  listHistoryForActiveAccount(): HistoryLog[] {
+    const key = this.getActiveAccountKey();
+    if (!key) return [];
+    return this._history.listByFingerprint(key.fingerprint);
+  }
+
+  listActivityForActiveAccount(): UserActivityLog[] {
+    const key = this.getActiveAccountKey();
+    if (!key) return [];
+    return this._activity.listByFingerprint(key.fingerprint);
+  }
+
+  /**
+   * Builds a MajikFileIdentity directly from an already-resolved, in-scope key —
+   * never re-looks-up "the active account." Returns undefined (not throw) when
+   * the key can't support envelope encryption, since logging must never block
+   * the operation it's attached to.
+   */
+  private _identityFromKey(key: MajikKey): MajikFileIdentity | undefined {
+    if (key.isLocked) return undefined;
+    const mlKemSecretKey = this._keys.getMlKemSecretKey(key.id);
+    if (!mlKemSecretKey) return undefined;
+    return {
+      publicKey: key.publicKeyBase64,
+      fingerprint: key.fingerprint,
+      mlKemPublicKey: key.mlKemPublicKey,
+      mlKemSecretKey,
+    };
+  }
+
+  /**
+   * Writes a HistoryLog entry. Never throws — a logging failure must not fail
+   * the signing/verification/seal operation it's attached to. `fingerprint` is
+   * the caller's responsibility: pass the fingerprint of whichever key actually
+   * performed the operation, not whatever happens to be the active account.
+   */
+  protected async _recordHistory(
+    fingerprint: string | undefined,
+    options: Omit<CreateHistoryLogOptions, "id" | "timestamp" | "fingerprint">,
+  ): Promise<HistoryLog | null> {
+    try {
+      // 1. Fetch user app preferences
+      const prefs = await this.getUserAppPreferences();
+      const historyPrefs = prefs.general?.history;
+
+      // 2. Abort if the user disabled history logging
+      if (historyPrefs?.enabled === false) {
+        return null;
+      }
+
+      // 3. Create the new log entry
+      const entry = await this._history.create({ ...options, fingerprint });
+      this._emit("history-log", entry);
+
+      // 4. Enforce the maxCount limit
+      const maxCount = historyPrefs?.maxCount ?? 100;
+
+      if (fingerprint && maxCount > 0) {
+        // Fetch all logs for this specific fingerprint
+        const userLogs = this._history.listByFingerprint(fingerprint);
+
+        if (userLogs.length > maxCount) {
+          // Sort logs chronologically (oldest first) based on the timestamp string
+          userLogs.sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+
+          // Identify the oldest logs that exceed the maxCount threshold
+          const excessCount = userLogs.length - maxCount;
+          const logsToDelete = userLogs.slice(0, excessCount);
+          const idsToDelete = logsToDelete.map((log) => log.id);
+
+          // Batch delete the old logs from cache and storage adapter
+          await this._history.bulkRemove(idsToDelete);
+        }
+      }
+
+      return entry;
+    } catch (err) {
+      console.warn("MajikSignatureClient: failed to record history log", err);
+      return null;
+    }
+  }
+
+  protected async _recordActivity(
+    fingerprint: string | undefined,
+    options: Omit<
+      CreateUserActivityLogOptions,
+      "id" | "timestamp" | "fingerprint"
+    >,
+  ): Promise<UserActivityLog | null> {
+    try {
+      const entry = await this._activity.create({ ...options, fingerprint });
+      this._emit("activity-log", entry);
+
+      // Enforce the hardcoded 5000 log limit
+      const MAX_ACTIVITY_LOGS = 5000;
+
+      if (fingerprint) {
+        const userLogs = this._activity.listByFingerprint(fingerprint);
+
+        if (userLogs.length > MAX_ACTIVITY_LOGS) {
+          // Sort logs chronologically (oldest first)
+          userLogs.sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+
+          // Identify and bulk delete the oldest excess logs
+          const excessCount = userLogs.length - MAX_ACTIVITY_LOGS;
+          const logsToDelete = userLogs.slice(0, excessCount);
+          const idsToDelete = logsToDelete.map((log) => log.id);
+
+          await this._activity.bulkRemove(idsToDelete);
+        }
+      }
+
+      return entry;
+    } catch (err) {
+      console.warn("MajikSignatureClient: failed to record activity log", err);
+      return null;
+    }
+  }
+
+  /**
+   * Clears only the history logs for the active account.
+   */
+  async clearHistoryLogsForActiveAccount(): Promise<void> {
+    const key = this.getActiveAccountKey();
+    if (!key) {
+      throw new Error("No active account — call setActiveAccount() first");
+    }
+
+    const fingerprint = key.fingerprint;
+    const historyLogs = this._history.listByFingerprint(fingerprint);
+
+    if (historyLogs.length > 0) {
+      const historyIds = historyLogs.map((log) => log.id);
+      await this._history.bulkRemove(historyIds);
+    }
+  }
+
+  /**
+   * Clears only the activity logs for the active account.
+   */
+  async clearActivityLogsForActiveAccount(): Promise<void> {
+    const key = this.getActiveAccountKey();
+    if (!key) {
+      throw new Error("No active account — call setActiveAccount() first");
+    }
+
+    const fingerprint = key.fingerprint;
+    const activityLogs = this._activity.listByFingerprint(fingerprint);
+
+    if (activityLogs.length > 0) {
+      const activityIds = activityLogs.map((log) => log.id);
+      await this._activity.bulkRemove(activityIds);
+    }
+  }
+
+  /**
+   * Unified method: Clears both history and activity logs for the active account,
+   * then seeds a new log acknowledging the reset.
+   */
+  async restartLogsForActiveAccount(): Promise<void> {
+    const key = this.getActiveAccountKey();
+    if (!key) {
+      throw new Error("No active account — call setActiveAccount() first");
+    }
+
+    // Call the separated clear methods
+    await this.clearHistoryLogsForActiveAccount();
+    await this.clearActivityLogsForActiveAccount();
+
+    // Record the restart action itself as the new initial log
+    await this._recordActivity(key.fingerprint, {
+      reference_id: "logs-restarted",
+      action: AuditActions.KEY_DATA_RESET, // Adjust if you have a specific LOGS_CLEARED action
+      metadata: {
+        at: new Date().toISOString(),
+        message: "History and activity logs restarted",
+      },
+    });
+  }
+
+  /**
+   * Hydrate history + activity logs scoped to the active account's
+   * fingerprint. Mirrors hydrateStampsForActiveAccount() — separate from
+   * the general hydrate() above because it needs an unlocked active
+   * account and is typically called after unlockAccount(), not at startup.
+   */
+  async hydrateLogsForActiveAccount(): Promise<void> {
+    const key = this.getActiveAccountKey();
+    if (!key)
+      throw new Error("No active account — call setActiveAccount() first");
+    await this._history.hydrateForFingerprint(key.fingerprint);
+    await this._activity.hydrateForFingerprint(key.fingerprint);
   }
 
   // ==========================================================================
@@ -312,6 +570,21 @@ export class MajikSignatureClient extends MajikKeyClient<
   async isOnetimeUnlockEnabled(): Promise<boolean> {
     const appPreferences = await this.stateManager.getUserAppPreferences();
     return appPreferences.security?.key?.onetimeUnlock ?? true;
+  }
+
+  async isAutoSaveAfterSignEnabled(): Promise<boolean> {
+    const appPreferences = await this.stateManager.getUserAppPreferences();
+    return appPreferences.signing?.autosave?.afterSign?.enabled ?? false;
+  }
+
+  async isAutoSaveAfterSealEnabled(): Promise<boolean> {
+    const appPreferences = await this.stateManager.getUserAppPreferences();
+    return appPreferences.signing?.autosave?.afterSeal?.enabled ?? false;
+  }
+
+  async isAutoSaveAfterNotarizeEnabled(): Promise<boolean> {
+    const appPreferences = await this.stateManager.getUserAppPreferences();
+    return appPreferences.signing?.autosave?.afterNotary?.enabled ?? false;
   }
 
   // ==========================================================================
@@ -436,12 +709,25 @@ export class MajikSignatureClient extends MajikKeyClient<
       throw new Error("Invalid contact — missing required fields");
     }
     await this._contacts.addContact(contact);
+
+    this._recordActivity(this.getActiveAccountKey()?.fingerprint, {
+      reference_id: contact.id,
+      action: AuditActions.CONTACT_ADDED, // ⚠️ verify member name
+      metadata: { contactFingerprint: contact.fingerprint },
+    });
+
     this._emit("new-contact", contact);
   }
 
   async removeContact(id: string): Promise<void> {
     const result = await this._contacts.removeContact(id);
     if (!result.success) throw new Error(result.message);
+
+    this._recordActivity(this.getActiveAccountKey()?.fingerprint, {
+      reference_id: id,
+      action: AuditActions.CONTACT_DELETED, // ⚠️
+    });
+
     this._emit("removed-contact", id);
   }
 
@@ -651,6 +937,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     content: Uint8Array | string,
     options?: SignOptions,
     accountId?: string,
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<SignResult> {
     const id = accountId ?? this.getActiveAccount()?.id;
     if (!id)
@@ -681,6 +968,21 @@ export class MajikSignatureClient extends MajikKeyClient<
         timestamp: signature.timestamp,
         contentType: signature.contentType,
       };
+
+      // sign() — key is already resolved in scope, use it directly
+      this._recordHistory(key.fingerprint, {
+        reference_id: result.contentHash,
+        historyType: HistoryTypes.SIGN,
+        status: HistoryStatuses.SUCCESS,
+        source,
+        operation: {
+          digest: result.contentHash,
+          detached: false,
+          sealed: false,
+          tsa: false,
+        },
+        signerCount: 1,
+      }).catch((err) => console.warn(err));
 
       this._emit("sign", result);
       return result;
@@ -738,6 +1040,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     content: Uint8Array | string,
     signature: MajikSignature | MajikSignatureJSON | string,
     publicKeys?: MajikSignerPublicKeys,
+    source: HistorySource = HistorySources.SYSTEM,
   ): VerifyResult {
     try {
       // Deserialize if base64 string
@@ -765,6 +1068,22 @@ export class MajikSignatureClient extends MajikKeyClient<
           ? this.resolveSignerLabel(result.signerId)
           : undefined,
       };
+
+      this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
+        reference_id: verifyResult.contentHash!,
+        historyType: HistoryTypes.VERIFY,
+        status: verifyResult.valid
+          ? HistoryStatuses.SUCCESS
+          : HistoryStatuses.FAILED,
+        source,
+        operation: {
+          digest: verifyResult.contentHash!,
+          detached: false,
+          sealed: false,
+          tsa: false,
+        },
+        valid: verifyResult.valid,
+      }).catch((err) => console.warn(err));
 
       this._emit("verify", verifyResult);
       return verifyResult;
@@ -980,6 +1299,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       key?: MajikKey;
       expectedSignerId?: string;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult> {
     if (!serializedSignature?.trim()) {
       throw new Error(
@@ -1002,7 +1322,25 @@ export class MajikSignatureClient extends MajikKeyClient<
       }
     }
 
-    return this.verifyContent(content, sig, options);
+    const verifyResult = await this.verifyContent(content, sig, options);
+
+    this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
+      reference_id: verifyResult.contentHash!,
+      historyType: HistoryTypes.VERIFY,
+      status: verifyResult.valid
+        ? HistoryStatuses.SUCCESS
+        : HistoryStatuses.FAILED,
+      source,
+      operation: {
+        digest: verifyResult.contentHash!,
+        detached: false,
+        sealed: false,
+        tsa: false,
+      },
+      valid: verifyResult.valid,
+    }).catch((err) => console.warn(err));
+
+    return verifyResult;
   }
 
   // ── Signature Serialization Helpers ──────────────────────────────────────────
@@ -1077,37 +1415,15 @@ export class MajikSignatureClient extends MajikKeyClient<
       timestamp?: string;
       accountId?: string;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<MajikSignature> {
-    const id = options?.accountId ?? this.getActiveAccount()?.id;
-    if (!id)
-      throw new Error("No active account — call setActiveAccount() first");
-
-    let key: ReturnType<typeof this._keys.get> | undefined;
-    let shouldRelock = false;
-
-    try {
-      await this._keys.ensureUnlocked(id);
-      key = this._keys.get(id);
-      if (!key) throw new Error(`Account not found in keystore: "${id}"`);
-      if (!key.hasSigningKeys) {
-        throw new Error(
-          `Account "${id}" has no signing keys. ` +
-            `Re-import via importAccountFromMnemonicBackup() to enable signing.`,
-        );
-      }
-
-      shouldRelock = !(await this.isOnetimeUnlockEnabled());
-
-      return await MajikSignature.sign(content, key, {
-        contentType: options?.contentType,
-        timestamp: options?.timestamp,
-      });
-    } catch (err) {
-      this._emit("error", err, { context: "signContent" });
-      throw err;
-    } finally {
-      if (shouldRelock) key?.lock();
-    }
+    const { signature } = await this.sign(
+      content,
+      { contentType: options?.contentType, timestamp: options?.timestamp },
+      options?.accountId,
+      source,
+    );
+    return signature;
   }
 
   /**
@@ -1128,6 +1444,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       accountId?: string;
       expectedSigners?: ExpectedSigner[];
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<ReturnType<typeof MajikSignature.signFile>> {
     const id = options?.accountId ?? this.getActiveAccount()?.id;
     if (!id)
@@ -1155,6 +1472,26 @@ export class MajikSignatureClient extends MajikKeyClient<
         mimeType: options?.mimeType,
         expectedSigners: options?.expectedSigners,
       });
+
+      const signedBlob = new Uint8Array(
+        await signedResponse.blob.arrayBuffer(),
+      );
+
+      this._recordHistory(key.fingerprint, {
+        reference_id: signedResponse.signature.contentHash,
+        historyType: HistoryTypes.SIGN,
+        status: HistoryStatuses.SUCCESS,
+        source,
+        operation: {
+          digest: signedResponse.signature.contentHash,
+          detached: false,
+          sealed: false,
+          tsa: false,
+        },
+        signerCount: 1,
+        data: signedBlob,
+        identity: this._identityFromKey(key),
+      }).catch((err) => console.warn(err));
 
       return signedResponse;
     } catch (err) {
@@ -1189,6 +1526,7 @@ export class MajikSignatureClient extends MajikKeyClient<
         | Blob;
       tsa?: MajikTimestamp;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<ReturnType<typeof MajikSignature.signFileDetached>> {
     const id = options?.accountId ?? this.getActiveAccount()?.id;
     if (!id)
@@ -1218,6 +1556,23 @@ export class MajikSignatureClient extends MajikKeyClient<
         existingEnvelope: options?.existingEnvelope,
         tsa: options?.tsa,
       });
+
+      const envelopeBytes = signedResponse.envelope.toMJKSIGBytes();
+      this._recordHistory(key.fingerprint, {
+        reference_id: signedResponse.signature.contentHash,
+        historyType: HistoryTypes.SIGN,
+        status: HistoryStatuses.SUCCESS,
+        source,
+        operation: {
+          digest: signedResponse.signature.contentHash,
+          detached: true, // was false in your draft — this method is detached signing
+          sealed: false,
+          tsa: !!options?.tsa,
+        },
+        signerCount: 1,
+        data: envelopeBytes,
+        identity: this._identityFromKey(key),
+      }).catch((err) => console.warn(err));
 
       return signedResponse;
     } catch (err) {
@@ -1250,6 +1605,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       mimeType?: string;
     }>,
     options?: { accountId?: string },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<
     Array<{
       blob: Blob | null;
@@ -1282,6 +1638,21 @@ export class MajikSignatureClient extends MajikKeyClient<
             timestamp,
             mimeType,
           });
+
+          this._recordHistory(key.fingerprint, {
+            reference_id: result.signature.contentHash,
+            historyType: HistoryTypes.SIGN,
+            status: HistoryStatuses.SUCCESS,
+            source,
+            operation: {
+              digest: result.signature.contentHash,
+              detached: false,
+              sealed: false,
+              tsa: false,
+            },
+            signerCount: 1,
+          });
+
           return {
             blob: result.blob,
             signature: result.signature,
@@ -1327,21 +1698,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       key?: MajikKey;
       expectedSignerId?: string;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult> {
     try {
       const publicKeys = await this._resolveSignerPublicKeys(options);
-
-      if (publicKeys) {
-        return MajikSignature.verify(content, signature, publicKeys);
-      }
-
-      // No signer provided — extract keys from envelope (self-reported)
-      const sig =
-        signature instanceof MajikSignature
-          ? signature
-          : MajikSignature.fromJSON(signature);
-
-      return MajikSignature.verify(content, sig, sig.extractPublicKeys());
+      return this.verify(content, signature, publicKeys ?? undefined, source);
     } catch (err) {
       this._emit("error", err, { context: "verifyContent" });
       throw err;
@@ -1364,9 +1725,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       expectedSignerId?: string;
       mimeType?: string;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult & { handler?: string; reason?: string }> {
     try {
       const publicKeys = await this._resolveSignerPublicKeys(options);
+      let result: VerificationResult & { handler?: string; reason?: string };
 
       if (publicKeys) {
         const results = await MajikSignature.verifyFile(
@@ -1378,33 +1741,52 @@ export class MajikSignatureClient extends MajikKeyClient<
           },
           true,
         );
-        return results[0];
-      }
-
-      // No signer provided — extract and use self-reported keys from first signature.
-      const extracted = await MajikSignature.extractFrom(file, {
-        mimeType: options?.mimeType,
-      });
-      if (!extracted.length) {
-        return {
-          valid: false,
-          signerId: "",
-          contentHash: "",
-          timestamp: new Date().toISOString(),
-          reason: "No embedded signature found",
-        };
-      }
-
-      const firstSig = extracted[0];
-      const results = await MajikSignature.verifyFile(
-        file,
-        firstSig.extractPublicKeys(),
-        {
-          expectedSignerId: firstSig.signerId,
+        result = results[0];
+      } else {
+        const extracted = await MajikSignature.extractFrom(file, {
           mimeType: options?.mimeType,
-        },
-      );
-      return results[0];
+        });
+        if (!extracted.length) {
+          result = {
+            valid: false,
+            signerId: "",
+            contentHash: "",
+            timestamp: new Date().toISOString(),
+            reason: "No embedded signature found",
+          };
+        } else {
+          const firstSig = extracted[0];
+          const results = await MajikSignature.verifyFile(
+            file,
+            firstSig.extractPublicKeys(),
+            {
+              expectedSignerId: firstSig.signerId,
+              mimeType: options?.mimeType,
+            },
+          );
+          result = results[0];
+        }
+      }
+
+      if (result.contentHash) {
+        this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
+          reference_id: result.contentHash,
+          historyType: HistoryTypes.VERIFY,
+          status: result.valid
+            ? HistoryStatuses.SUCCESS
+            : HistoryStatuses.FAILED,
+          source,
+          operation: {
+            digest: result.contentHash,
+            detached: false,
+            sealed: false,
+            tsa: false,
+          },
+          valid: result.valid,
+        });
+      }
+
+      return result;
     } catch (err) {
       this._emit("error", err, { context: "verifyFile" });
       throw err;
@@ -1432,9 +1814,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       expectedSignerId?: string;
       mimeType?: string;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult & { handler?: string; reason?: string }> {
     try {
       const publicKeys = await this._resolveSignerPublicKeys(options);
+      let result: VerificationResult & { handler?: string; reason?: string };
 
       if (publicKeys) {
         const results = await MajikSignature.verifyFileDetached(
@@ -1446,38 +1830,55 @@ export class MajikSignatureClient extends MajikKeyClient<
             mimeType: options?.mimeType,
           },
         );
-        return results[0];
+        result = results[0];
+      } else {
+        const resolvedEnvelope = await MajikSignatureEnvelope.from(envelope);
+        const firstSigJson = resolvedEnvelope.signatures[0];
+
+        if (!firstSigJson) {
+          result = {
+            valid: false,
+            signerId: "",
+            contentHash: "",
+            timestamp: new Date().toISOString(),
+            reason: "Envelope contains no signatures",
+          };
+        } else {
+          const firstSig = MajikSignature.fromJSON(firstSigJson);
+          const results = await MajikSignature.verifyFileDetached(
+            file,
+            resolvedEnvelope,
+            firstSig.extractPublicKeys(),
+            {
+              expectedSignerId: firstSig.signerId,
+              mimeType: options?.mimeType,
+            },
+          );
+          result = results[0];
+        }
       }
 
-      // No signer provided — resolve the *envelope* (not the file, which for
-      // a detached signature never carries an embedded envelope) and use the
-      // self-reported keys from its first signature.
-      const resolvedEnvelope = await MajikSignatureEnvelope.from(envelope);
-      const firstSigJson = resolvedEnvelope.signatures[0];
-
-      if (!firstSigJson) {
-        return {
-          valid: false,
-          signerId: "",
-          contentHash: "",
-          timestamp: new Date().toISOString(),
-          reason: "Envelope contains no signatures",
-        };
+      if (result.contentHash) {
+        this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
+          reference_id: result.contentHash,
+          historyType: HistoryTypes.VERIFY,
+          status: result.valid
+            ? HistoryStatuses.SUCCESS
+            : HistoryStatuses.FAILED,
+          source,
+          operation: {
+            digest: result.contentHash,
+            detached: true,
+            sealed: false,
+            tsa: false,
+          },
+          valid: result.valid,
+        });
       }
 
-      const firstSig = MajikSignature.fromJSON(firstSigJson);
-      const results = await MajikSignature.verifyFileDetached(
-        file,
-        resolvedEnvelope,
-        firstSig.extractPublicKeys(),
-        {
-          expectedSignerId: firstSig.signerId,
-          mimeType: options?.mimeType,
-        },
-      );
-      return results[0];
+      return result;
     } catch (err) {
-      this._emit("error", err, { context: "verifyFileDetached" }); // was "verifyFile" — also a copy-paste leftover
+      this._emit("error", err, { context: "verifyFileDetached" });
       throw err;
     }
   }
@@ -1496,6 +1897,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   async verifyFileAllSignatures(
     file: Blob,
     options?: { mimeType?: string },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerifyResult[]> {
     try {
       const signatures = await this.extractSignature(file, options);
@@ -1513,6 +1915,7 @@ export class MajikSignatureClient extends MajikKeyClient<
 
       const strippedBlob = await this.stripSignature(file, options);
       const contentBytes = new Uint8Array(await strippedBlob.arrayBuffer());
+      const activeFingerprint = this.getActiveAccountKey()?.fingerprint;
 
       return signatures.map((sig) => {
         try {
@@ -1521,6 +1924,23 @@ export class MajikSignatureClient extends MajikKeyClient<
             sig,
             sig.extractPublicKeys(),
           );
+
+          this._recordHistory(activeFingerprint, {
+            reference_id: result.contentHash!,
+            historyType: HistoryTypes.VERIFY,
+            status: result.valid
+              ? HistoryStatuses.SUCCESS
+              : HistoryStatuses.FAILED,
+            source,
+            operation: {
+              digest: result.contentHash!,
+              detached: false,
+              sealed: false,
+              tsa: false,
+            },
+            valid: result.valid,
+          });
+
           return {
             ...result,
             signerLabel: result.signerId
@@ -1556,13 +1976,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       | MajikSignatureEnvelopeJSON
       | Uint8Array
       | Blob,
-    options?: { mimeType?: string },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerifyResult[]> {
     try {
       const resolvedEnvelope = await MajikSignatureEnvelope.from(envelope);
 
-      // Same integrity check MajikSignatureEmbed.verify()/verifyDetached() run
-      // internally — worth keeping here since we're bypassing that shared path.
       const integrity = resolvedEnvelope.verifyAllowlistIntegrity();
       if (!integrity.valid) {
         return [
@@ -1590,6 +2008,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       }
 
       const contentBytes = new Uint8Array(await file.arrayBuffer());
+      const activeFingerprint = this.getActiveAccountKey()?.fingerprint;
 
       return signatures.map((sigJson) => {
         try {
@@ -1599,6 +2018,23 @@ export class MajikSignatureClient extends MajikKeyClient<
             sig,
             sig.extractPublicKeys(),
           );
+
+          this._recordHistory(activeFingerprint, {
+            reference_id: result.contentHash!,
+            historyType: HistoryTypes.VERIFY,
+            status: result.valid
+              ? HistoryStatuses.SUCCESS
+              : HistoryStatuses.FAILED,
+            source,
+            operation: {
+              digest: result.contentHash!,
+              detached: true,
+              sealed: false,
+              tsa: false,
+            },
+            valid: result.valid,
+          });
+
           return {
             ...result,
             signerLabel: result.signerId
@@ -1642,6 +2078,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       key?: MajikKey;
       expectedSignerId?: string;
     },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<
     Array<
       VerificationResult & {
@@ -1654,6 +2091,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     const publicKeys = await this._resolveSignerPublicKeys(options).catch(
       () => null,
     );
+    const activeFingerprint = this.getActiveAccountKey()?.fingerprint;
 
     return Promise.all(
       files.map(async (entry) => {
@@ -1705,12 +2143,25 @@ export class MajikSignatureClient extends MajikKeyClient<
             result = results[0];
           }
 
-          return {
-            ...result,
-            handler: result.handler,
-            mimeType,
-            error: null,
-          };
+          if (result.contentHash) {
+            this._recordHistory(activeFingerprint, {
+              reference_id: result.contentHash,
+              historyType: HistoryTypes.VERIFY,
+              status: result.valid
+                ? HistoryStatuses.SUCCESS
+                : HistoryStatuses.FAILED,
+              source,
+              operation: {
+                digest: result.contentHash,
+                detached: false,
+                sealed: false,
+                tsa: false,
+              },
+              valid: result.valid,
+            });
+          }
+
+          return { ...result, handler: result.handler, mimeType, error: null };
         } catch (err) {
           this._emit("error", err, { context: "batchVerifyFiles" });
           return {
@@ -1726,7 +2177,6 @@ export class MajikSignatureClient extends MajikKeyClient<
       }),
     );
   }
-
   // ── Signature Utilities ───────────────────────────────────────────────────
 
   /**
@@ -2004,6 +2454,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   async seal(
     file: Blob,
     options?: { mimeType?: string; timestamp?: string; accountId?: string },
+    source: HistorySource = HistorySources.SYSTEM,
   ): Promise<ReturnType<typeof MajikSignature.seal>> {
     const id = options?.accountId ?? this.getActiveAccount()?.id;
     if (!id)
@@ -2025,10 +2476,31 @@ export class MajikSignatureClient extends MajikKeyClient<
 
       shouldRelock = !(await this.isOnetimeUnlockEnabled());
 
-      return await MajikSignature.seal(file, key, {
+      const sealResult = await MajikSignature.seal(file, key, {
         mimeType: options?.mimeType,
         timestamp: options?.timestamp,
       });
+
+      const sealedBlobBytes = new Uint8Array(
+        await sealResult.blob.arrayBuffer(),
+      );
+
+      this._recordHistory(key.fingerprint, {
+        reference_id: sealResult.sealInfo.sealHash,
+        historyType: HistoryTypes.SEAL,
+        status: HistoryStatuses.SUCCESS,
+        source,
+        operation: {
+          digest: sealResult.sealInfo.sealHash,
+          detached: false,
+          sealed: true,
+          tsa: false,
+        },
+        data: sealedBlobBytes,
+        identity: this._identityFromKey(key),
+      }).catch((err) => console.warn(err));
+
+      return sealResult;
     } catch (err) {
       this._emit("error", err, { context: "seal" });
       throw err;
@@ -2091,7 +2563,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     options?: { mimeType?: string; accountId?: string },
   ): Promise<MajikSignatureStamp> {
     try {
-      const identity = this._resolveStampIdentity(options?.accountId);
+      const identity = this._resolveMajikFileIdentity(options?.accountId);
       const stamp = await this._stamps.create({
         data,
         identity,
@@ -2099,6 +2571,13 @@ export class MajikSignatureClient extends MajikKeyClient<
         name,
         mimeType: options?.mimeType,
       });
+
+      this._recordActivity(identity.fingerprint, {
+        reference_id: stamp.id,
+        action: AuditActions.STAMP_CREATED, // ⚠️
+        metadata: { kind, name },
+      });
+
       this._emit("new-stamp", stamp);
       return stamp;
     } catch (err) {
@@ -2148,7 +2627,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     id: string,
     accountId?: string,
   ): Promise<Uint8Array> {
-    const identity = this._resolveStampIdentity(accountId);
+    const identity = this._resolveMajikFileIdentity(accountId);
     return this._stamps.decryptContent(id, identity);
   }
 
@@ -2161,7 +2640,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     data: Uint8Array | ArrayBuffer,
     options?: { mimeType?: string; accountId?: string },
   ): Promise<MajikSignatureStamp> {
-    const identity = this._resolveStampIdentity(options?.accountId);
+    const identity = this._resolveMajikFileIdentity(options?.accountId);
     const raw = data instanceof Uint8Array ? data : new Uint8Array(data);
     return this._stamps.replaceContent(id, raw, identity, options?.mimeType);
   }
@@ -2170,6 +2649,12 @@ export class MajikSignatureClient extends MajikKeyClient<
     const existed = await this._stamps.has(id);
     if (!existed) return false;
     await this._stamps.delete(id);
+
+    this._recordActivity(this.getActiveAccountKey()?.fingerprint, {
+      reference_id: id,
+      action: AuditActions.STAMP_DELETED, // ⚠️
+    });
+
     this._emit("removed-stamp", id);
     return true;
   }
@@ -2282,7 +2767,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * encryption/decryption. Requires the account to have ML-KEM keys and
    * to already be unlocked — call ensureIdentityUnlocked() first if needed.
    */
-  private _resolveStampIdentity(accountId?: string): MajikFileIdentity {
+  private _resolveMajikFileIdentity(accountId?: string): MajikFileIdentity {
     const id = accountId ?? this.getActiveAccount()?.id;
     if (!id)
       throw new Error("No active account — call setActiveAccount() first");
@@ -2514,6 +2999,16 @@ export class MajikSignatureClient extends MajikKeyClient<
     if (data.preferences) {
       await this.setUserAppPreferences(data.preferences);
     }
+
+    this._recordActivity(this.getActiveAccountKey()?.fingerprint, {
+      reference_id: "app-data-restore",
+      action: AuditActions.RESTORE_APP_DATA, // ⚠️
+      metadata: {
+        contactsRestored: contacts.length,
+        groupsRestored: groups.filter((g) => !g.isSystem).length,
+        stampsRestored: (data.stamps ?? []).length,
+      },
+    });
 
     return {
       contacts: contacts.length,
