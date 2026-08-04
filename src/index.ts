@@ -13,6 +13,8 @@ export * from "./core/stamp/majik-signature-stamp";
 
 export * from "@majikah/majik-key";
 
+export * from "./core/log";
+
 export { DEFAULT_USER_APP_PREFERENCES } from "./core/client-state-manager";
 
 export * from "./core/utils/utilities";
