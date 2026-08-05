@@ -1769,6 +1769,10 @@ export class MajikSignatureClient extends MajikKeyClient<
       }
 
       if (result.contentHash) {
+        const isSealed = await MajikSignature.isSealed(file);
+        const signatures = await MajikSignature.extractFrom(file);
+        const firstSigHasTSA = signatures[0].hasTSA;
+
         this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
           reference_id: result.contentHash,
           historyType: HistoryTypes.VERIFY,
@@ -1779,8 +1783,8 @@ export class MajikSignatureClient extends MajikKeyClient<
           operation: {
             digest: result.contentHash,
             detached: false,
-            sealed: false,
-            tsa: false,
+            sealed: isSealed ?? false,
+            tsa: firstSigHasTSA ?? false,
           },
           valid: result.valid,
         });
