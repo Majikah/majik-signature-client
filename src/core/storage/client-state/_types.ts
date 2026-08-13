@@ -25,16 +25,12 @@ export const CLIENT_STATE_KEYS = {
 
 export type ClientStateKey =
   (typeof CLIENT_STATE_KEYS)[keyof typeof CLIENT_STATE_KEYS];
+  
 
 // ---------------------------------------------------------------------------
 // Typed value shapes
 // ---------------------------------------------------------------------------
 
-/**
- * Ordered list of own account IDs. The head of the array is the active
- * account. Stored as a JSON array: `["id1", "id2", ...]`.
- */
-export type AccountOrderValue = string[];
 
 /**
  * User-configured app-wide preferences.
