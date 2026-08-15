@@ -2308,6 +2308,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       timestamp?: string;
       mimeType?: string;
       accountId?: string;
+      validUntil?: string;
     },
   ): Promise<ReturnType<typeof MajikSignature.signFile>> {
     // signFile already strips before signing — resignFile is a named alias
