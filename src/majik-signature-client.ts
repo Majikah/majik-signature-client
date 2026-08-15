@@ -123,13 +123,13 @@ export interface MajikSignatureClientConfig extends MajikKeyClientConfig {
   clientStateManager?: ClientStateManager;
   contactManager?: MajikContactManager;
   stampsManager?: MajikSignatureStampManager;
-  historyManager?: HistoryLogManager; // NEW
-  activityManager?: UserActivityLogManager; // NEW
+  historyManager?: HistoryLogManager;
+  activityManager?: UserActivityLogManager;
   adapters?: MajikKeyClientConfig["adapters"] & {
     contacts?: MajikContactManagerAdapters;
     stamps?: MajikSignatureStampStorageAdapter;
-    historyLogs?: HistoryLogStorageAdapter; // NEW
-    userActivityLogs?: UserActivityLogStorageAdapter; // NEW
+    historyLogs?: HistoryLogStorageAdapter; 
+    userActivityLogs?: UserActivityLogStorageAdapter; 
   };
 }
 
@@ -164,8 +164,8 @@ export class MajikSignatureClient extends MajikKeyClient<
 > {
   private _contacts: MajikContactManager;
   private _stamps: MajikSignatureStampManager;
-  private _history: HistoryLogManager; // NEW
-  private _activity: UserActivityLogManager; // NEW
+  private _history: HistoryLogManager;
+  private _activity: UserActivityLogManager; 
 
   constructor(config: MajikSignatureClientConfig) {
     super(config);
