@@ -128,8 +128,8 @@ export interface MajikSignatureClientConfig extends MajikKeyClientConfig {
   adapters?: MajikKeyClientConfig["adapters"] & {
     contacts?: MajikContactManagerAdapters;
     stamps?: MajikSignatureStampStorageAdapter;
-    historyLogs?: HistoryLogStorageAdapter; 
-    userActivityLogs?: UserActivityLogStorageAdapter; 
+    historyLogs?: HistoryLogStorageAdapter;
+    userActivityLogs?: UserActivityLogStorageAdapter;
   };
 }
 
@@ -165,7 +165,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   private _contacts: MajikContactManager;
   private _stamps: MajikSignatureStampManager;
   private _history: HistoryLogManager;
-  private _activity: UserActivityLogManager; 
+  private _activity: UserActivityLogManager;
 
   constructor(config: MajikSignatureClientConfig) {
     super(config);
@@ -1041,6 +1041,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     signature: MajikSignature | MajikSignatureJSON | string,
     publicKeys?: MajikSignerPublicKeys,
     source: HistorySource = HistorySources.SYSTEM,
+    now?: Date,
   ): VerifyResult {
     try {
       // Deserialize if base64 string
@@ -1060,7 +1061,7 @@ export class MajikSignatureClient extends MajikKeyClient<
               sig as MajikSignatureJSON,
             ).extractPublicKeys());
 
-      const result = MajikSignature.verify(content, sig, keys);
+      const result = MajikSignature.verify(content, sig, keys, now);
 
       const verifyResult: VerifyResult = {
         ...result,
@@ -1102,6 +1103,8 @@ export class MajikSignatureClient extends MajikKeyClient<
     content: Uint8Array | string,
     signature: MajikSignature | MajikSignatureJSON | string,
     accountId: string,
+    source: HistorySource = HistorySources.SYSTEM,
+    now?: Date,
   ): VerifyResult {
     const key = this._keys.get(accountId);
     if (!key) throw new Error(`Account not found: "${accountId}"`);
@@ -1114,7 +1117,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
 
     const publicKeys = MajikSignature.publicKeysFromMajikKey(key);
-    return this.verify(content, signature, publicKeys);
+    return this.verify(content, signature, publicKeys, source, now);
   }
 
   /**
@@ -1125,6 +1128,8 @@ export class MajikSignatureClient extends MajikKeyClient<
     content: Uint8Array | string,
     signature: MajikSignature | MajikSignatureJSON | string,
     contactId: string,
+    source: HistorySource = HistorySources.SYSTEM,
+    now?: Date,
   ): Promise<VerifyResult> {
     const contact = this._contacts.getContact(contactId);
     if (!contact) throw new Error(`Contact not found: "${contactId}"`);
@@ -1176,7 +1181,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       mlDsaPublicKey: base64ToUint8Array(mlDsaPublicKeyBase64),
     };
 
-    return this.verify(content, sig, publicKeys);
+    return this.verify(content, sig, publicKeys, source, now);
   }
 
   /**
@@ -1187,10 +1192,12 @@ export class MajikSignatureClient extends MajikKeyClient<
     content: Uint8Array | string,
     signatures: Array<MajikSignature | MajikSignatureJSON | string>,
     publicKeys?: MajikSignerPublicKeys,
+    source: HistorySource = HistorySources.SYSTEM,
+    now?: Date,
   ): VerifyResult[] {
     return signatures.map((sig) => {
       try {
-        return this.verify(content, sig, publicKeys);
+        return this.verify(content, sig, publicKeys, source, now);
       } catch (err) {
         this._emit("error", err, { context: "verifyBatch" });
         return {
@@ -1219,6 +1226,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       contentType?: string;
       timestamp?: string;
       accountId?: string;
+      validUntil?: string;
     },
   ): Promise<MajikSignature> {
     if (!text?.trim())
@@ -1242,6 +1250,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       contentType?: string;
       timestamp?: string;
       accountId?: string;
+      validUntil?: string;
     },
   ): Promise<{ signature: MajikSignature; serialized: string }> {
     const signature = await this.signContent(content, options);
@@ -1267,6 +1276,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       publicKeyBase64?: string;
       key?: MajikKey;
       expectedSignerId?: string;
+      now?: Date;
     },
   ): Promise<VerificationResult> {
     if (!text?.trim())
@@ -1298,6 +1308,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       publicKeyBase64?: string;
       key?: MajikKey;
       expectedSignerId?: string;
+      now?: Date;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult> {
@@ -1322,7 +1333,12 @@ export class MajikSignatureClient extends MajikKeyClient<
       }
     }
 
-    const verifyResult = await this.verifyContent(content, sig, options);
+    const verifyResult = await this.verifyContent(
+      content,
+      sig,
+      options,
+      source,
+    );
 
     this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
       reference_id: verifyResult.contentHash!,
@@ -1414,12 +1430,17 @@ export class MajikSignatureClient extends MajikKeyClient<
       contentType?: string;
       timestamp?: string;
       accountId?: string;
+      validUntil?: string;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<MajikSignature> {
     const { signature } = await this.sign(
       content,
-      { contentType: options?.contentType, timestamp: options?.timestamp },
+      {
+        contentType: options?.contentType,
+        timestamp: options?.timestamp,
+        validUntil: options?.validUntil,
+      },
       options?.accountId,
       source,
     );
@@ -1443,6 +1464,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       mimeType?: string;
       accountId?: string;
       expectedSigners?: ExpectedSigner[];
+      validUntil?: string;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<ReturnType<typeof MajikSignature.signFile>> {
@@ -1471,6 +1493,7 @@ export class MajikSignatureClient extends MajikKeyClient<
         timestamp: options?.timestamp,
         mimeType: options?.mimeType,
         expectedSigners: options?.expectedSigners,
+        validUntil: options?.validUntil,
       });
 
       const signedBlob = new Uint8Array(
@@ -1519,6 +1542,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       mimeType?: string;
       accountId?: string;
       expectedSigners?: ExpectedSigner[];
+      validUntil?: string;
       existingEnvelope?:
         | MajikSignatureEnvelope
         | MajikSignatureEnvelopeJSON
@@ -1555,6 +1579,7 @@ export class MajikSignatureClient extends MajikKeyClient<
         expectedSigners: options?.expectedSigners,
         existingEnvelope: options?.existingEnvelope,
         tsa: options?.tsa,
+        validUntil: options?.validUntil,
       });
 
       const envelopeBytes = signedResponse.envelope.toMJKSIGBytes();
@@ -1603,6 +1628,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       contentType?: string;
       timestamp?: string;
       mimeType?: string;
+      validUntil?: string;
     }>,
     options?: { accountId?: string },
     source: HistorySource = HistorySources.SYSTEM,
@@ -1631,48 +1657,51 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
 
     return Promise.all(
-      files.map(async ({ file, contentType, timestamp, mimeType }) => {
-        try {
-          const result = await MajikSignature.signFile(file, key, {
-            contentType,
-            timestamp,
-            mimeType,
-          });
+      files.map(
+        async ({ file, contentType, timestamp, mimeType, validUntil }) => {
+          try {
+            const result = await MajikSignature.signFile(file, key, {
+              contentType,
+              timestamp,
+              mimeType,
+              validUntil,
+            });
 
-          this._recordHistory(key.fingerprint, {
-            reference_id: result.signature.contentHash,
-            historyType: HistoryTypes.SIGN,
-            status: HistoryStatuses.SUCCESS,
-            source,
-            operation: {
-              digest: result.signature.contentHash,
-              detached: false,
-              sealed: false,
-              tsa: false,
-            },
-            signerCount: 1,
-          });
+            this._recordHistory(key.fingerprint, {
+              reference_id: result.signature.contentHash,
+              historyType: HistoryTypes.SIGN,
+              status: HistoryStatuses.SUCCESS,
+              source,
+              operation: {
+                digest: result.signature.contentHash,
+                detached: false,
+                sealed: false,
+                tsa: false,
+              },
+              signerCount: 1,
+            });
 
-          return {
-            blob: result.blob,
-            signature: result.signature,
-            serialized: result.signature.serialize(),
-            handler: result.handler,
-            mimeType: result.mimeType,
-            error: null,
-          };
-        } catch (err) {
-          this._emit("error", err, { context: "batchSignFiles" });
-          return {
-            blob: null,
-            signature: null,
-            serialized: null,
-            handler: null,
-            mimeType: null,
-            error: err instanceof Error ? err : new Error(String(err)),
-          };
-        }
-      }),
+            return {
+              blob: result.blob,
+              signature: result.signature,
+              serialized: result.signature.serialize(),
+              handler: result.handler,
+              mimeType: result.mimeType,
+              error: null,
+            };
+          } catch (err) {
+            this._emit("error", err, { context: "batchSignFiles" });
+            return {
+              blob: null,
+              signature: null,
+              serialized: null,
+              handler: null,
+              mimeType: null,
+              error: err instanceof Error ? err : new Error(String(err)),
+            };
+          }
+        },
+      ),
     );
   }
 
@@ -1900,7 +1929,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    */
   async verifyFileAllSignatures(
     file: Blob,
-    options?: { mimeType?: string },
+    options?: { mimeType?: string; now?: Date },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerifyResult[]> {
     try {
@@ -1927,6 +1956,7 @@ export class MajikSignatureClient extends MajikKeyClient<
             contentBytes,
             sig,
             sig.extractPublicKeys(),
+            options?.now,
           );
 
           this._recordHistory(activeFingerprint, {
@@ -1981,6 +2011,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       | Uint8Array
       | Blob,
     source: HistorySource = HistorySources.SYSTEM,
+    now?: Date,
   ): Promise<VerifyResult[]> {
     try {
       const resolvedEnvelope = await MajikSignatureEnvelope.from(envelope);
@@ -2021,6 +2052,7 @@ export class MajikSignatureClient extends MajikKeyClient<
             contentBytes,
             sig,
             sig.extractPublicKeys(),
+            now,
           );
 
           this._recordHistory(activeFingerprint, {
@@ -2081,6 +2113,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       publicKeyBase64?: string;
       key?: MajikKey;
       expectedSignerId?: string;
+      now?: Date;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<
@@ -2119,6 +2152,7 @@ export class MajikSignatureClient extends MajikKeyClient<
             const results = await MajikSignature.verifyFile(file, publicKeys, {
               mimeType,
               expectedSignerId,
+              now: options?.now,
             });
             result = results[0];
           } else {
@@ -2142,7 +2176,11 @@ export class MajikSignatureClient extends MajikKeyClient<
             const results = await MajikSignature.verifyFile(
               file,
               firstSig.extractPublicKeys(),
-              { mimeType, expectedSignerId: firstSig.signerId },
+              {
+                mimeType,
+                expectedSignerId: firstSig.signerId,
+                now: options?.now,
+              },
             );
             result = results[0];
           }
