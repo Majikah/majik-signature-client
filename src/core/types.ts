@@ -2,7 +2,6 @@ import { MajikContactManagerJSON } from "./contacts/types";
 import { MajikSignatureStampJSON } from "./stamp/majik-signature-stamp";
 import { UserAppPreferences } from "./storage";
 
-
 export interface MAJIK_API_RESPONSE {
   success: boolean;
   message: string;

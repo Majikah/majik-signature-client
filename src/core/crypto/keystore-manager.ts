@@ -11,9 +11,8 @@
  *   - SQLiteKeystoreAdapter    (Tauri / desktop)
  */
 
-import { MajikKey, MajikKeyJSON, SerializedIdentity } from "@majikah/majik-key";
+import { MajikKey, MajikKeyJSON } from "@majikah/majik-key";
 
-import { KDF_VERSION } from "./constants";
 import { MajikKeyStorageAdapter } from "../storage/keystore/_types";
 import { InMemoryKeystoreAdapter } from "../storage/keystore/adapter-memory";
 import { MnemonicLanguage } from "@majikah/majik-key/dist/core/crypto/wordlist";
@@ -27,16 +26,6 @@ export class MajikKeyManagerError extends Error {
     this.name = "MajikKeyManagerError";
     this.cause = cause;
   }
-}
-
-// ─── Legacy type (migration reads only) ──────────────────────────────────────
-
-interface LegacySerializedIdentity {
-  id: string;
-  publicKey: string;
-  fingerprint: string;
-  encryptedPrivateKey?: string;
-  salt?: string;
 }
 
 // ─── MajikKeyManager ──────────────────────────────────────────────────────────
@@ -458,76 +447,6 @@ export class MajikKeyManager {
     );
     await this.save(key);
     return key;
-  }
-
-  // ── Legacy migration ──────────────────────────────────────────────────────
-
-  /**
-   * Reconstruct a locked MajikKey from a legacy SerializedIdentity.
-   * The resulting key will have kdfVersion: PBKDF2 and hasMlKem: false.
-   */
-  static fromLegacySerializedIdentity(si: LegacySerializedIdentity): MajikKey {
-    if (!si.id || !si.publicKey || !si.fingerprint) {
-      throw new MajikKeyManagerError(
-        "Invalid legacy SerializedIdentity: missing required fields",
-      );
-    }
-
-    const json: MajikKeyJSON = {
-      id: si.id,
-      label: "",
-      publicKey: si.publicKey,
-      fingerprint: si.fingerprint,
-      encryptedPrivateKey: si.encryptedPrivateKey || "",
-      salt: si.salt || "",
-      backup: "_LEGACY",
-      timestamp: new Date().toISOString(),
-      kdfVersion: KDF_VERSION.PBKDF2,
-    };
-
-    return MajikKey.fromJSON(json);
-  }
-
-  /**
-   * Migrate a single legacy SerializedIdentity into the current adapter.
-   * Skips if a record with the same ID already exists.
-   */
-  async migrate(
-    identity: SerializedIdentity,
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      if (await this._adapter.exists(identity.id)) {
-        return { success: true, message: `Already migrated: ${identity.id}` };
-      }
-      const key = MajikKeyManager.fromLegacySerializedIdentity(identity);
-      await this.save(key);
-      return { success: true, message: `Successfully migrated ${identity.id}` };
-    } catch (err) {
-      console.warn(`Failed to migrate legacy account ${identity.id}:`, err);
-      return {
-        success: false,
-        message: `Failed to migrate legacy account ${identity.id}: ${err}`,
-      };
-    }
-  }
-
-  /**
-   * Migrate all legacy SerializedIdentity records into the current adapter.
-   * Already-migrated accounts are skipped.
-   */
-  async migrateAll(
-    legacyIdentities: SerializedIdentity[],
-  ): Promise<{ migrated: number; skipped: number }> {
-    let migrated = 0;
-    let skipped = 0;
-
-    for (const identity of legacyIdentities) {
-      const result = await this.migrate(identity);
-      if (result.success) migrated++;
-      else skipped++;
-    }
-
-    return { migrated, skipped };
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
