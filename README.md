@@ -108,3 +108,26 @@ const backupBlob = await client.backupAppData();
 const restoreResults = await client.restoreAppData(backupBlob);
 console.log(`Restored ${restoreResults.contacts} contacts.`);
 ```
+
+
+## License
+
+[Apache-2.0](LICENSE) — free for personal and commercial use.
+
+---
+## Author
+
+Made with 💙 by [@thezelijah](https://github.com/jedlsf)
+
+## About the Developer
+
+- **Developer**: Josef Elijah Fabian
+- **GitHub**: [https://github.com/jedlsf](https://github.com/jedlsf)
+- **Project Repository**: [https://github.com/Majikah/majik-signature](https://github.com/Majikah/majik-signature)
+
+---
+
+## Contact
+
+- **Business Email**: [business@thezelijah.world](mailto:business@thezelijah.world)
+- **Official Website**: [https://www.thezelijah.world](https://www.thezelijah.world)

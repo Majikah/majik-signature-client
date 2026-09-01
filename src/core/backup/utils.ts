@@ -1,4 +1,4 @@
-import { MAJIK_MESSAGE_BACKUP_MAGIC_SIZE } from "./constants";
+import { MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE } from "./constants";
 
 /**
  * Prepends a magic-byte header to raw binary, returning a new Uint8Array.
@@ -27,15 +27,15 @@ export function stripMagic(
   buffer: Uint8Array,
   label: string,
 ): Uint8Array {
-  if (buffer.byteLength < MAJIK_MESSAGE_BACKUP_MAGIC_SIZE) {
+  if (buffer.byteLength < MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE) {
     throw new Error(
       `${label} backup: buffer too small to contain a valid header.`,
     );
   }
 
-  const header = buffer.subarray(0, MAJIK_MESSAGE_BACKUP_MAGIC_SIZE);
+  const header = buffer.subarray(0, MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE);
 
-  for (let i = 0; i < MAJIK_MESSAGE_BACKUP_MAGIC_SIZE; i++) {
+  for (let i = 0; i < MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE; i++) {
     if (header[i] !== expected[i]) {
       throw new Error(
         `${label} backup: invalid magic bytes — this file is not a valid ${label} backup ` +
@@ -45,7 +45,7 @@ export function stripMagic(
     }
   }
 
-  return buffer.subarray(MAJIK_MESSAGE_BACKUP_MAGIC_SIZE);
+  return buffer.subarray(MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE);
 }
 
 /**

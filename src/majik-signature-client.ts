@@ -68,7 +68,7 @@ import { MajikCompressedJSON } from "@majikah/majik-cjson";
 import { prependMagic, readBackupBlob } from "./core/backup/utils";
 import {
   MAJIK_SIGNATURE_BACKUP_MAGIC,
-  MAJIK_MESSAGE_BACKUP_MAGIC_SIZE,
+  MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE,
 } from "./core/backup/constants";
 import { AppDataSnapshot, ContactManagerSnapshot } from "./core/backup/types";
 import { MajikSignatureStampManager } from "./core/stamp/majik-signature-stamp-manager";
@@ -3067,7 +3067,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     blob: Blob,
   ): Promise<"stamps" | "contacts" | "appData" | "unknown"> {
     const header = new Uint8Array(
-      await blob.slice(0, MAJIK_MESSAGE_BACKUP_MAGIC_SIZE).arrayBuffer(),
+      await blob.slice(0, MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE).arrayBuffer(),
     );
 
     for (const [type, magic] of Object.entries(

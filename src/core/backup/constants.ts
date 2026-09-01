@@ -20,11 +20,12 @@ export const MAJIK_SIGNATURE_BACKUP_MAGIC = {
 } as const;
 
 /** The union of valid magic-byte headers. */
-export type MajikMessageBackupMagic =
+export type MajikSignatureBackupMagic =
   (typeof MAJIK_SIGNATURE_BACKUP_MAGIC)[keyof typeof MAJIK_SIGNATURE_BACKUP_MAGIC];
 
 /** Which backup type a file contains, as a discriminant string. */
-export type MajikMessageBackupType = keyof typeof MAJIK_SIGNATURE_BACKUP_MAGIC;
+export type MajikSignatureBackupType =
+  keyof typeof MAJIK_SIGNATURE_BACKUP_MAGIC;
 
 /** Byte length of every backup file header (4-byte tag + 2-byte version). */
-export const MAJIK_MESSAGE_BACKUP_MAGIC_SIZE = 6;
+export const MAJIK_SIGNATURE_BACKUP_MAGIC_SIZE = 6;
