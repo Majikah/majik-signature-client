@@ -1795,12 +1795,20 @@ export class MajikSignatureClient extends MajikKeyClient<
             reason: "No embedded signature found",
           };
         } else {
-          const firstSig = extracted[0];
+          // Honor expectedSignerId when resolving which embedded signature to
+          // check — previously this always fell back to extracted[0], so every
+          // iteration of a per-signer verify loop (verifySignersForFile) ended
+          // up re-checking the SAME first signer instead of each one in turn.
+          const targetSig = options?.expectedSignerId
+            ? (extracted.find((s) => s.signerId === options.expectedSignerId) ??
+              extracted[0])
+            : extracted[0];
+
           const results = await MajikSignature.verifyFile(
             file,
-            firstSig.extractPublicKeys(),
+            targetSig.extractPublicKeys(),
             {
-              expectedSignerId: firstSig.signerId,
+              expectedSignerId: targetSig.signerId,
               mimeType: options?.mimeType,
             },
           );
@@ -1888,13 +1896,19 @@ export class MajikSignatureClient extends MajikKeyClient<
             reason: "Envelope contains no signatures",
           };
         } else {
-          const firstSig = MajikSignature.fromJSON(firstSigJson);
-          const results = await MajikSignature.verifyFileDetached(
+          const targetSig = options?.expectedSignerId
+            ? (resolvedEnvelope.signatures.find(
+                (s) => s.signerId === options.expectedSignerId,
+              ) ?? resolvedEnvelope.signatures[0])
+            : resolvedEnvelope.signatures[0];
+
+          const parsedTargetSig = MajikSignature.fromJSON(targetSig);
+
+          const results = await MajikSignature.verifyFile(
             file,
-            resolvedEnvelope,
-            firstSig.extractPublicKeys(),
+            parsedTargetSig.extractPublicKeys(),
             {
-              expectedSignerId: firstSig.signerId,
+              expectedSignerId: parsedTargetSig.signerId,
               mimeType: options?.mimeType,
             },
           );
@@ -1925,6 +1939,13 @@ export class MajikSignatureClient extends MajikKeyClient<
       this._emit("error", err, { context: "verifyFileDetached" });
       throw err;
     }
+  }
+
+  async verifyFileChain(
+    file: Blob,
+    options?: { mimeType?: string; now?: Date },
+  ): Promise<ReturnType<typeof MajikSignature.verifyFileChain>> {
+    return MajikSignature.verifyFileChain(file, options);
   }
 
   // ── Verify ALL signatures (embedded) ──────────────────────────────────────
@@ -2183,14 +2204,18 @@ export class MajikSignatureClient extends MajikKeyClient<
               };
             }
 
-            const firstSig = extracted[0];
+            const targetSig = options?.expectedSignerId
+              ? (extracted.find(
+                  (s) => s.signerId === options.expectedSignerId,
+                ) ?? extracted[0])
+              : extracted[0];
+
             const results = await MajikSignature.verifyFile(
               file,
-              firstSig.extractPublicKeys(),
+              targetSig.extractPublicKeys(),
               {
-                mimeType,
-                expectedSignerId: firstSig.signerId,
-                now: options?.now,
+                expectedSignerId: targetSig.signerId,
+                mimeType: mimeType,
               },
             );
             result = results[0];
