@@ -21,11 +21,12 @@ import {
   MajikSignature,
   MajikSignatureEnvelope,
 } from "@majikah/majik-signature";
+import { normalizeToBytes } from "@majikah/majik-signature/dist/core/embed/utils";
 import type {
   EnvelopeInfo,
+  EnvelopeInput,
   ExpectedSigner,
   FileLike,
-  MajikSignatureEnvelopeJSON,
   MajikSignatureJSON,
   MajikSignerPublicKeys,
   MajikTimestamp,
@@ -1458,7 +1459,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   const { blob } = await majik.signFile(wavBlob, { accountId: "acc_xyz" });
    */
   async signFile(
-    file: Blob,
+    file: FileLike,
     options?: {
       contentType?: string;
       timestamp?: string;
@@ -1547,7 +1548,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   const { blob } = await majik.signFileDetached(wavBlob, { accountId: "acc_xyz" });
    */
   async signFileDetached(
-    file: Blob,
+    file: FileLike,
     options?: {
       contentType?: string;
       timestamp?: string;
@@ -1555,11 +1556,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       accountId?: string;
       expectedSigners?: ExpectedSigner[];
       validUntil?: string;
-      existingEnvelope?:
-        | MajikSignatureEnvelope
-        | MajikSignatureEnvelopeJSON
-        | Uint8Array
-        | Blob;
+      existingEnvelope?: EnvelopeInput;
       tsa?: MajikTimestamp;
     },
     source: HistorySource = HistorySources.SYSTEM,
@@ -1758,7 +1755,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
    */
   async verifyFile(
-    file: Blob,
+    file: FileLike,
     options?: {
       contactId?: string;
       publicKeyBase64?: string;
@@ -1854,12 +1851,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
    */
   async verifyFileDetached(
-    file: Blob,
-    envelope:
-      | MajikSignatureEnvelope
-      | MajikSignatureEnvelopeJSON
-      | Uint8Array
-      | Blob,
+    file: FileLike,
+    envelope: EnvelopeInput,
     options?: {
       contactId?: string;
       publicKeyBase64?: string;
@@ -1943,7 +1936,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   async verifyFileChain(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string; now?: Date },
   ): Promise<ReturnType<typeof MajikSignature.verifyFileChain>> {
     return MajikSignature.verifyFileChain(file, options);
@@ -1961,7 +1954,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   if (!result.allValid) console.warn(result.results.filter(r => r.status !== "verified"));
    */
   async verifyFileRevisions(
-    finalFile: Blob,
+    finalFile: FileLike,
     revisions: FileLike[],
     options?: {
       mimeType?: string;
@@ -1995,7 +1988,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * verification but don't belong to who they claim to be.
    */
   async verifyFileAllSignatures(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string; now?: Date },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerifyResult[]> {
@@ -2071,12 +2064,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * content, each checked against its own self-reported public keys.
    */
   async verifyFileDetachedAllSignatures(
-    file: Blob,
-    envelope:
-      | MajikSignatureEnvelope
-      | MajikSignatureEnvelopeJSON
-      | Uint8Array
-      | Blob,
+    file: FileLike,
+    envelope: EnvelopeInput,
     source: HistorySource = HistorySources.SYSTEM,
     now?: Date,
   ): Promise<VerifyResult[]> {
@@ -2109,7 +2098,8 @@ export class MajikSignatureClient extends MajikKeyClient<
         ];
       }
 
-      const contentBytes = new Uint8Array(await file.arrayBuffer());
+      const contentBytes = await normalizeToBytes(file);
+
       const activeFingerprint = this.getActiveAccountKey()?.fingerprint;
 
       return signatures.map((sigJson) => {
@@ -2297,7 +2287,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Does not verify — use verifyFile() to verify.
    */
   async extractSignature(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<MajikSignature[]> {
     try {
@@ -2312,7 +2302,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Return a clean copy of the file with any embedded signature removed.
    */
   async stripSignature(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<Blob> {
     try {
@@ -2327,7 +2317,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Check whether a file contains an embedded MajikSignature.
    */
   async isFileSigned(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<boolean> {
     try {
@@ -2373,7 +2363,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   await r2.put(key, await blob.arrayBuffer());
    */
   async resignFile(
-    file: Blob,
+    file: FileLike,
     options?: {
       contentType?: string;
       timestamp?: string;
@@ -2398,7 +2388,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   }
    */
   async getFileSignatureInfo(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<MajikSignature[]> {
     try {
@@ -2431,7 +2421,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Returns null for open-signing files or unsigned files.
    */
   async getAllowlist(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<ExpectedSigner[] | null> {
     try {
@@ -2446,7 +2436,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Check whether a MajikKey is permitted to add a signature to this file.
    */
   async canSign(
-    file: Blob,
+    file: FileLike,
     key: MajikKey,
     options?: { mimeType?: string },
   ): Promise<ReturnType<typeof MajikSignature.canSign>> {
@@ -2462,7 +2452,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Returns true when the file has a restricted multi-sig envelope.
    */
   async isMultiSig(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<boolean> {
     try {
@@ -2477,7 +2467,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Core signatories method — returns all, signed, and pending arrays.
    */
   async getSignatories(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
     filter?: SignatoriesFilter,
   ): Promise<SignatoriesResult | null> {
@@ -2490,7 +2480,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   async getSignedSignatories(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<SignatoriesResult | null> {
     try {
@@ -2502,7 +2492,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   async getPendingSignatories(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<SignatoriesResult | null> {
     try {
@@ -2514,7 +2504,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   async getAllSignatories(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<SignatoriesResult | null> {
     try {
@@ -2530,7 +2520,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * controls sealing. Returns null for open-signing or unsigned files.
    */
   async getIssuer(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<SignatoryInfo | null> {
     try {
@@ -2545,7 +2535,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Return a complete summary of the envelope state in one file read.
    */
   async getEnvelopeInfo(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<EnvelopeInfo | null> {
     try {
@@ -2566,7 +2556,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    *   console.log("Sealed at", sealInfo.sealTimestamp);
    */
   async seal(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string; timestamp?: string; accountId?: string },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<ReturnType<typeof MajikSignature.seal>> {
@@ -2627,7 +2617,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Verify the seal hash against the current signatories and seal timestamp.
    */
   async verifySeal(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<SealVerificationResult> {
     try {
@@ -2642,7 +2632,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Get seal metadata without verifying.
    */
   async getSealInfo(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<SealInfo | null> {
     try {
@@ -2657,7 +2647,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Returns true if the file has a sealed envelope (structural check, no crypto).
    */
   async isSealed(
-    file: Blob,
+    file: FileLike,
     options?: { mimeType?: string },
   ): Promise<boolean> {
     try {
