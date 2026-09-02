@@ -1465,6 +1465,15 @@ export class MajikSignatureClient extends MajikKeyClient<
       accountId?: string;
       expectedSigners?: ExpectedSigner[];
       validUntil?: string;
+      /** Pre-stamp original of this file, when the file currently being signed
+       *  had its embedded envelope destroyed by a wholesale re-encode (PDF
+       *  flatten, image re-render, audio re-mux) — lets MajikSignature.signFile
+       *  recover and continue the prior signature chain instead of starting a
+       *  fresh, disconnected envelope. Omit for a normal first/continuing sign
+       *  where the current file's own embedded envelope is still readable. */
+      priorSignedFile?: Blob;
+      /** Optional note attached to this specific revision. */
+      message?: string;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<ReturnType<typeof MajikSignature.signFile>> {
@@ -1494,6 +1503,8 @@ export class MajikSignatureClient extends MajikKeyClient<
         mimeType: options?.mimeType,
         expectedSigners: options?.expectedSigners,
         validUntil: options?.validUntil,
+        priorSignedFile: options?.priorSignedFile,
+        message: options?.message,
       });
 
       const signedBlob = new Uint8Array(
