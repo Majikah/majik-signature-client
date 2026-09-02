@@ -24,6 +24,7 @@ import {
 import type {
   EnvelopeInfo,
   ExpectedSigner,
+  FileLike,
   MajikSignatureEnvelopeJSON,
   MajikSignatureJSON,
   MajikSignerPublicKeys,
@@ -1946,6 +1947,40 @@ export class MajikSignatureClient extends MajikKeyClient<
     options?: { mimeType?: string; now?: Date },
   ): Promise<ReturnType<typeof MajikSignature.verifyFileChain>> {
     return MajikSignature.verifyFileChain(file, options);
+  }
+
+  /**
+   * Verify a full revision chain by matching a set of supplied prior-version
+   * files against the loaded file's fileVersions history. Unlike verifyFile()
+   * (which only checks the CURRENT bytes against the latest signer),
+   * this re-hashes every supplied revision and confirms each one lines up
+   * with its recorded chain entry AND its recorded signature.
+   *
+   * @example
+   *   const result = await majik.verifyFileRevisions(currentFile, [v1File, v2File]);
+   *   if (!result.allValid) console.warn(result.results.filter(r => r.status !== "verified"));
+   */
+  async verifyFileRevisions(
+    finalFile: Blob,
+    revisions: FileLike[],
+    options?: {
+      mimeType?: string;
+      now?: Date;
+      resolvePublicKeys?: (
+        signerId: string,
+      ) => MajikSignerPublicKeys | Promise<MajikSignerPublicKeys>;
+    },
+  ): Promise<ReturnType<typeof MajikSignature.verifyFileRevisions>> {
+    try {
+      return await MajikSignature.verifyFileRevisions(
+        finalFile,
+        revisions,
+        options,
+      );
+    } catch (err) {
+      this._emit("error", err, { context: "verifyFileRevisions" });
+      throw err;
+    }
   }
 
   // ── Verify ALL signatures (embedded) ──────────────────────────────────────
