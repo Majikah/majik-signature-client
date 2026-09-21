@@ -1336,22 +1336,6 @@ export class MajikSignatureClient extends MajikKeyClient<
       source,
     );
 
-    this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
-      reference_id: verifyResult.contentHash!,
-      historyType: HistoryTypes.VERIFY,
-      status: verifyResult.valid
-        ? HistoryStatuses.SUCCESS
-        : HistoryStatuses.FAILED,
-      source,
-      operation: {
-        digest: verifyResult.contentHash!,
-        detached: false,
-        sealed: false,
-        tsa: false,
-      },
-      valid: verifyResult.valid,
-    }).catch((err) => console.warn(err));
-
     return verifyResult;
   }
 
