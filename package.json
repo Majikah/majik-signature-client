@@ -54,13 +54,14 @@
   "dependencies": {
     "@majikah/majik-cjson": "^0.0.3",
     "@majikah/majik-contact": "^0.0.6",
-    "@majikah/majik-file": "^0.4.1",
-    "@majikah/majik-key": "^0.4.0",
-    "@majikah/majik-key-client": "^0.2.0",
-    "@majikah/majik-signature": "^0.4.1",
+    "@majikah/majik-file": "^0.5.0",
+    "@majikah/majik-key": "^0.5.2",
+    "@majikah/majik-key-client": "^0.3.0",
+    "@majikah/majik-signature": "^0.6.0",
     "fflate": "^0.8.3"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1"
+    "@types/node": "^26.6.2",
+    "vitest": "^5.0.1"
   }
 }

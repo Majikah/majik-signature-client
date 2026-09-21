@@ -275,6 +275,7 @@ export class MajikSignatureStampManager {
     });
     await this._persist(replacement);
     this._cache.set(replacement.id, replacement);
+
     return replacement;
   }
 
