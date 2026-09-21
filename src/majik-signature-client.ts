@@ -1035,8 +1035,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * @param content     - The original content that was signed
    * @param signature   - MajikSignature instance, JSON object, or base64 string
    * @param publicKeys  - Optional. If omitted, public keys are extracted from
-   *                      the envelope (self-reported — cross-check signerId
-   *                      against a trusted source for full security).
+                     the envelope (self-reported — cross-check signerId
+                     against a trusted source for full security).
    */
   verify(
     content: Uint8Array | string,
@@ -1162,25 +1162,19 @@ export class MajikSignatureClient extends MajikKeyClient<
             ? sig.timestamp
             : (sig as MajikSignatureJSON).timestamp,
         signerLabel: this.resolveSignerLabel(envelopeSignerId),
+        reason: "Signer does not match contact",
       };
       this._emit("verify", result);
       return result;
     }
 
-    const edPublicKeyBase64 =
-      sig instanceof MajikSignature
-        ? sig.signerEdPublicKey
-        : (sig as MajikSignatureJSON).signerEdPublicKey;
-
-    const mlDsaPublicKeyBase64 =
-      sig instanceof MajikSignature
-        ? sig.signerMlDsaPublicKey
-        : (sig as MajikSignatureJSON).signerMlDsaPublicKey;
-
+    if (!contact.edPublicKeyBase64 || !contact.mlDsaPublicKeyBase64) {
+      throw new Error(`Contact "${contactId}" has no signing public keys.`);
+    }
     const publicKeys: MajikSignerPublicKeys = {
       signerId: contact.fingerprint,
-      edPublicKey: base64ToUint8Array(edPublicKeyBase64),
-      mlDsaPublicKey: base64ToUint8Array(mlDsaPublicKeyBase64),
+      edPublicKey: base64ToUint8Array(contact.edPublicKeyBase64),
+      mlDsaPublicKey: base64ToUint8Array(contact.mlDsaPublicKeyBase64),
     };
 
     return this.verify(content, sig, publicKeys, source, now);
@@ -1219,8 +1213,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Convenience alias for signing a plain string.
    *
    * @example
-   *   const sig = await majik.signText("Hello world", { contentType: "text/plain" });
-   *   const b64 = sig.serialize(); // store alongside the text
+  const sig = await majik.signText("Hello world", { contentType: "text/plain" });
+  const b64 = sig.serialize(); // store alongside the text
    */
   async signText(
     text: string,
@@ -1241,10 +1235,10 @@ export class MajikSignatureClient extends MajikKeyClient<
    * base64-serialized string in one call.
    *
    * @example — sign a document and store the detached signature
-   *   const { serialized } = await majik.signAndDetach(docBytes, {
-   *     contentType: "application/pdf",
-   *   });
-   *   await db.insert({ doc_id, signature: serialized });
+  const { serialized } = await majik.signAndDetach(docBytes, {
+    contentType: "application/pdf",
+  });
+  await db.insert({ doc_id, signature: serialized });
    */
   async signAndDetach(
     content: Uint8Array | string,
@@ -1265,10 +1259,10 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Verify a plain string against a MajikSignature.
    *
    * @example
-   *   const result = await majik.verifyText("Hello world", sig, {
-   *     contactId: "contact_abc",
-   *   });
-   *   if (result.valid) console.log("Authentic");
+  const result = await majik.verifyText("Hello world", sig, {
+    contactId: "contact_abc",
+  });
+  if (result.valid) console.log("Authentic");
    */
   async verifyText(
     text: string,
@@ -1296,11 +1290,11 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Verify content against a base64-serialized detached signature string.
    *
    * @example
-   *   const row = await db.findOne({ doc_id });
-   *   const result = await majik.verifyDetached(docBytes, row.signature, {
-   *     contactId: row.signer_contact_id,
-   *   });
-   *   if (result.valid) console.log("Signed by", result.signerId);
+  const row = await db.findOne({ doc_id });
+  const result = await majik.verifyDetached(docBytes, row.signature, {
+    contactId: row.signer_contact_id,
+  });
+  if (result.valid) console.log("Signed by", result.signerId);
    */
   async verifyDetached(
     content: Uint8Array | string,
@@ -1367,8 +1361,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Deserialize a base64 signature string into a MajikSignature client.
    *
    * @example
-   *   const sig = majik.deserializeSignature(storedBase64);
-   *   console.log(sig.signerId, sig.timestamp);
+  const sig = majik.deserializeSignature(storedBase64);
+  console.log(sig.signerId, sig.timestamp);
    */
   deserializeSignature(serialized: string): MajikSignature {
     if (!serialized?.trim()) {
@@ -1382,11 +1376,11 @@ export class MajikSignatureClient extends MajikKeyClient<
    * without performing cryptographic verification.
    *
    * @example
-   *   const meta = majik.getSignatureMetadata(storedSig);
-   *   if (meta) {
-   *     const contact = majik.getContactByID(meta.signerId);
-   *     console.log(`Signed by ${contact?.meta?.label ?? meta.signerId} at ${meta.timestamp}`);
-   *   }
+  const meta = majik.getSignatureMetadata(storedSig);
+  if (meta) {
+    const contact = majik.getContactByID(meta.signerId);
+    console.log(`Signed by ${contact?.meta?.label ?? meta.signerId} at ${meta.timestamp}`);
+  }
    */
   getSignatureMetadata(serialized: string): {
     signerId: string;
@@ -1423,8 +1417,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Sign raw bytes or a string using the active account.
    *
    * @example
-   *   const sig = await majik.signContent(documentBytes, { contentType: "application/pdf" });
-   *   const b64 = sig.serialize(); // store alongside the document
+  const sig = await majik.signContent(documentBytes, { contentType: "application/pdf" });
+  const b64 = sig.serialize(); // store alongside the document
    */
   async signContent(
     content: Uint8Array | string,
@@ -1453,10 +1447,10 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Sign a file and embed the signature directly into it using the active account.
    *
    * @example
-   *   const { blob: signedPdf } = await majik.signFile(pdfBlob);
+  const { blob: signedPdf } = await majik.signFile(pdfBlob);
    *
    * @example — non-active account
-   *   const { blob } = await majik.signFile(wavBlob, { accountId: "acc_xyz" });
+  const { blob } = await majik.signFile(wavBlob, { accountId: "acc_xyz" });
    */
   async signFile(
     file: FileLike,
@@ -1542,10 +1536,10 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Sign a file with a detached signature envelope.
    *
    * @example
-   *   const { blob: signedPdf } = await majik.signFileDetached(pdfBlob);
+  const { blob: signedPdf } = await majik.signFileDetached(pdfBlob);
    *
    * @example — non-active account
-   *   const { blob } = await majik.signFileDetached(wavBlob, { accountId: "acc_xyz" });
+  const { blob } = await majik.signFileDetached(wavBlob, { accountId: "acc_xyz" });
    */
   async signFileDetached(
     file: FileLike,
@@ -1621,15 +1615,15 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Sign multiple file blobs with the active (or specified) account in one call.
    *
    * @example
-   *   const results = await majik.batchSignFiles([
-   *     { file: pdfBlob, contentType: "application/pdf" },
-   *     { file: wavBlob, contentType: "audio/wav" },
-   *     { file: mp4Blob, contentType: "video/mp4" },
-   *   ]);
-   *   for (const r of results) {
-   *     if (r.error) console.error("Failed:", r.error.message);
-   *     else await r2.put(key, await r.blob!.arrayBuffer());
-   *   }
+  const results = await majik.batchSignFiles([
+    { file: pdfBlob, contentType: "application/pdf" },
+    { file: wavBlob, contentType: "audio/wav" },
+    { file: mp4Blob, contentType: "video/mp4" },
+  ]);
+  for (const r of results) {
+    if (r.error) console.error("Failed:", r.error.message);
+    else await r2.put(key, await r.blob!.arrayBuffer());
+  }
    */
   async batchSignFiles(
     files: Array<{
@@ -1724,8 +1718,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * > against a known contact fingerprint before trusting the result.
    *
    * @example — verify against a known contact
-   *   const result = await majik.verifyContent(docBytes, sig, { contactId: "contact_abc" });
-   *   if (result.valid) console.log("Authentic, signed by:", result.signerId);
+  const result = await majik.verifyContent(docBytes, sig, { contactId: "contact_abc" });
+  if (result.valid) console.log("Authentic, signed by:", result.signerId);
    */
   async verifyContent(
     content: Uint8Array | string,
@@ -1735,12 +1729,19 @@ export class MajikSignatureClient extends MajikKeyClient<
       publicKeyBase64?: string;
       key?: MajikKey;
       expectedSignerId?: string;
+      now?: Date;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult> {
     try {
       const publicKeys = await this._resolveSignerPublicKeys(options);
-      return this.verify(content, signature, publicKeys ?? undefined, source);
+      return this.verify(
+        content,
+        signature,
+        publicKeys ?? undefined,
+        source,
+        options?.now,
+      );
     } catch (err) {
       this._emit("error", err, { context: "verifyContent" });
       throw err;
@@ -1751,8 +1752,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Verify a file's embedded signature.
    *
    * @example — verify a signed PDF against a known contact
-   *   const result = await majik.verifyFile(signedPdf, { contactId: "contact_abc" });
-   *   if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
+  const result = await majik.verifyFile(signedPdf, { contactId: "contact_abc" });
+  if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
    */
   async verifyFile(
     file: FileLike,
@@ -1762,6 +1763,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       key?: MajikKey;
       expectedSignerId?: string;
       mimeType?: string;
+      now?: Date;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult & { handler?: string; reason?: string }> {
@@ -1776,6 +1778,7 @@ export class MajikSignatureClient extends MajikKeyClient<
           {
             expectedSignerId: options?.expectedSignerId,
             mimeType: options?.mimeType,
+            now: options?.now,
           },
           true,
         );
@@ -1847,8 +1850,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Verify a file's detached signature.
    *
    * @example — verify a signed PDF's detached signature against a known contact
-   *   const result = await majik.verifyFileDetached(signedPdf, envelope, { contactId: "contact_abc" });
-   *   if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
+  const result = await majik.verifyFileDetached(signedPdf, envelope, { contactId: "contact_abc" });
+  if (result.valid) console.log("Verified:", result.signerId, result.timestamp);
    */
   async verifyFileDetached(
     file: FileLike,
@@ -1859,6 +1862,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       key?: MajikKey;
       expectedSignerId?: string;
       mimeType?: string;
+      now?: Date;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<VerificationResult & { handler?: string; reason?: string }> {
@@ -1898,12 +1902,14 @@ export class MajikSignatureClient extends MajikKeyClient<
 
           const parsedTargetSig = MajikSignature.fromJSON(targetSig);
 
-          const results = await MajikSignature.verifyFile(
+          const results = await MajikSignature.verifyFileDetached(
             file,
+            resolvedEnvelope,
             parsedTargetSig.extractPublicKeys(),
             {
               expectedSignerId: parsedTargetSig.signerId,
               mimeType: options?.mimeType,
+              now: options?.now,
             },
           );
           result = results[0];
@@ -1950,8 +1956,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * with its recorded chain entry AND its recorded signature.
    *
    * @example
-   *   const result = await majik.verifyFileRevisions(currentFile, [v1File, v2File]);
-   *   if (!result.allValid) console.warn(result.results.filter(r => r.status !== "verified"));
+  const result = await majik.verifyFileRevisions(currentFile, [v1File, v2File]);
+  if (!result.allValid) console.warn(result.results.filter(r => r.status !== "verified"));
    */
   async verifyFileRevisions(
     finalFile: FileLike,
@@ -2155,11 +2161,11 @@ export class MajikSignatureClient extends MajikKeyClient<
    * one call.
    *
    * @example
-   *   const results = await majik.batchVerifyFiles(
-   *     [pdfBlob, wavBlob, mp4Blob],
-   *     { contactId: "contact_abc" },
-   *   );
-   *   const allValid = results.every(r => r.valid);
+  const results = await majik.batchVerifyFiles(
+    [pdfBlob, wavBlob, mp4Blob],
+    { contactId: "contact_abc" },
+  );
+  const allValid = results.every(r => r.valid);
    */
   async batchVerifyFiles(
     files: Array<
@@ -2333,7 +2339,7 @@ export class MajikSignatureClient extends MajikKeyClient<
    * MajikSignature.verify() or for sharing with another party.
    *
    * @example
-   *   const myKeys = await majik.getSigningPublicKeys();
+  const myKeys = await majik.getSigningPublicKeys();
    */
   async getSigningPublicKeys(
     accountId?: string,
@@ -2359,8 +2365,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * with the active (or specified) account, and returns the newly signed blob.
    *
    * @example
-   *   const { blob } = await majik.resignFile(oldSignedPdf);
-   *   await r2.put(key, await blob.arrayBuffer());
+  const { blob } = await majik.resignFile(oldSignedPdf);
+  await r2.put(key, await blob.arrayBuffer());
    */
   async resignFile(
     file: FileLike,
@@ -2381,11 +2387,11 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Extract metadata from a file's embedded signature without verifying it.
    *
    * @example
-   *   const info = await majik.getFileSignatureInfo(pdfBlob);
-   *   if (info) {
-   *     const contact = majik.getContactByID(info.signerId);
-   *     console.log(`Signed by ${contact?.meta?.label ?? info.signerId}`);
-   *   }
+  const info = await majik.getFileSignatureInfo(pdfBlob);
+  if (info) {
+    const contact = majik.getContactByID(info.signerId);
+    console.log(`Signed by ${contact?.meta?.label ?? info.signerId}`);
+  }
    */
   async getFileSignatureInfo(
     file: FileLike,
@@ -2405,12 +2411,12 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Build an ExpectedSigner entry from a MajikKey.
    *
    * @example
-   *   const { blob } = await majik.signFile(file, {
-   *     expectedSigners: [
-   *       MajikSignatureClient.expectedSignerFromKey(aliceKey),
-   *       MajikSignatureClient.expectedSignerFromKey(bobKey),
-   *     ],
-   *   });
+  const { blob } = await majik.signFile(file, {
+    expectedSigners: [
+      MajikSignatureClient.expectedSignerFromKey(aliceKey),
+      MajikSignatureClient.expectedSignerFromKey(bobKey),
+    ],
+  });
    */
   static expectedSignerFromKey(key: MajikKey): ExpectedSigner {
     return MajikSignature.expectedSignerFromKey(key);
@@ -2552,8 +2558,8 @@ export class MajikSignatureClient extends MajikKeyClient<
    * Seal a restricted multi-sig file, preventing any further signatures.
    *
    * @example
-   *   const { blob, sealInfo } = await majik.seal(signedFile);
-   *   console.log("Sealed at", sealInfo.sealTimestamp);
+  const { blob, sealInfo } = await majik.seal(signedFile);
+  console.log("Sealed at", sealInfo.sealTimestamp);
    */
   async seal(
     file: FileLike,
@@ -2804,71 +2810,58 @@ export class MajikSignatureClient extends MajikKeyClient<
 
   // ── Private: Signer resolution ────────────────────────────────────────────
 
+  /**
+   *
+   * Callers pass { contactId, publicKeyBase64 } but the old resolver only read
+   * { contactID, address }. Result: contactId was silently ignored, the method
+   * returned null, and verifyContent/verifyFile/verifyFileDetached/batchVerifyFiles
+   * fell back to SELF-REPORTED envelope keys — i.e. "verify against a known
+   * contact" wasn't happening. This accepts both spellings.
+   *
+   * (Assumes publicKeyBase64 is the contact's MajikKeyAddress, as in
+   *  getContactByAddress — adjust if not.)
+   */
   private async _resolveSignerPublicKeys(options?: {
-    contactID?: string;
+    contactId?: string;
     address?: MajikKeyAddress;
+    publicKeyBase64?: string;
     key?: MajikKey;
     expectedSignerId?: string;
   }): Promise<MajikSignerPublicKeys | null> {
     if (!options) return null;
 
-    // Option A: caller passed a MajikKey instance directly
-    if (options.key) {
-      return MajikSignature.publicKeysFromMajikKey(options.key);
+    if (options.key) return MajikSignature.publicKeysFromMajikKey(options.key);
+    const contactId = options.contactId;
+    const address = options.address ?? options.publicKeyBase64;
+    let contact: MajikContact | undefined | null;
+
+    if (contactId) {
+      contact = this._contacts.getContact(contactId);
+      if (!contact) throw new Error(`No contact found for id "${contactId}"`);
+
+      const own = this._keys.get(contactId);
+      if (own?.hasSigningKeys)
+        return MajikSignature.publicKeysFromMajikKey(own);
+    } else if (address) {
+      contact = await this._contacts.getContactByAddress(address);
+      if (!contact)
+        throw new Error(`No contact found for public key "${address}"`);
+    } else {
+      return null;
     }
 
-    // Option B: contact ID looked up from the contact directory
-    if (options.contactID) {
-      const contact = this._contacts.getContact(options.contactID);
-      if (!contact) {
-        throw new Error(`No contact found for id "${options.contactID}"`);
-      }
-
-      // Own accounts are in the keystore — get their signing keys directly
-      const ownAccount = this.getOwnAccountById(options.contactID);
-      if (ownAccount) {
-        const key = this.keyManager.get(options.contactID);
-        if (key?.hasSigningKeys) {
-          return MajikSignature.publicKeysFromMajikKey(key);
-        }
-      }
-
-      // External contact — resolve from their contact card fields
-      if (!contact.edPublicKeyBase64 || !contact.mlDsaPublicKeyBase64) {
-        throw new Error(
-          `Contact "${options.contactID}" has no signing public keys. ` +
-            `They may need to share an updated contact card.`,
-        );
-      }
-
-      return {
-        signerId: contact.fingerprint,
-        edPublicKey: base64ToUint8Array(contact.edPublicKeyBase64),
-        mlDsaPublicKey: base64ToUint8Array(contact.mlDsaPublicKeyBase64),
-      };
+    if (!contact.edPublicKeyBase64 || !contact.mlDsaPublicKeyBase64) {
+      throw new Error(
+        `Contact "${contact.id}" has no signing public keys. ` +
+          `They may need to share an updated contact card.`,
+      );
     }
 
-    // Option C: raw base64 public key — look up via contact directory
-    if (options.address) {
-      const contact = await this._contacts.getContactByAddress(options.address);
-      if (!contact) {
-        throw new Error(`No contact found for public key "${options.address}"`);
-      }
-
-      if (!contact.edPublicKeyBase64 || !contact.mlDsaPublicKeyBase64) {
-        throw new Error(
-          `Contact for key "${options.address}" has no signing public keys.`,
-        );
-      }
-
-      return {
-        signerId: contact.fingerprint,
-        edPublicKey: base64ToUint8Array(contact.edPublicKeyBase64),
-        mlDsaPublicKey: base64ToUint8Array(contact.mlDsaPublicKeyBase64),
-      };
-    }
-
-    return null;
+    return {
+      signerId: contact.fingerprint,
+      edPublicKey: base64ToUint8Array(contact.edPublicKeyBase64),
+      mlDsaPublicKey: base64ToUint8Array(contact.mlDsaPublicKeyBase64),
+    };
   }
 
   /**
