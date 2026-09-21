@@ -1763,8 +1763,7 @@ export class MajikSignatureClient extends MajikKeyClient<
             expectedSignerId: options?.expectedSignerId,
             mimeType: options?.mimeType,
             now: options?.now,
-          },
-          true,
+          }
         );
         result = results[0];
       } else {
@@ -1795,6 +1794,7 @@ export class MajikSignatureClient extends MajikKeyClient<
             {
               expectedSignerId: targetSig.signerId,
               mimeType: options?.mimeType,
+              now: options?.now,
             },
           );
           result = results[0];
@@ -1804,7 +1804,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       if (result.contentHash) {
         const isSealed = await MajikSignature.isSealed(file);
         const signatures = await MajikSignature.extractFrom(file);
-        const firstSigHasTSA = signatures[0].hasTSA;
+        const firstSigHasTSA = !!signatures[0]?.hasTSA;
 
         this._recordHistory(this.getActiveAccountKey()?.fingerprint, {
           reference_id: result.contentHash,
