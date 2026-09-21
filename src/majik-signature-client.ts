@@ -2666,7 +2666,12 @@ export class MajikSignatureClient extends MajikKeyClient<
     name: string,
     options?: { mimeType?: string; accountId?: string },
   ): Promise<MajikSignatureStamp> {
+    const id = this.getActiveAccount()?.id;
+    if (!id)
+      throw new Error("No active account — call setActiveAccount() first");
     try {
+      await this._keys.ensureUnlocked(id);
+
       const identity = this._resolveMajikFileIdentity(options?.accountId);
       const stamp = await this._stamps.create({
         data,
