@@ -1756,15 +1756,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       let result: VerificationResult & { handler?: string; reason?: string };
 
       if (publicKeys) {
-        const results = await MajikSignature.verifyFile(
-          file,
-          publicKeys,
-          {
-            expectedSignerId: options?.expectedSignerId,
-            mimeType: options?.mimeType,
-            now: options?.now,
-          }
-        );
+        const results = await MajikSignature.verifyFile(file, publicKeys, {
+          expectedSignerId: options?.expectedSignerId,
+          mimeType: options?.mimeType,
+          now: options?.now,
+        });
         result = results[0];
       } else {
         const extracted = await MajikSignature.extractFrom(file, {
@@ -2656,7 +2652,7 @@ export class MajikSignatureClient extends MajikKeyClient<
     name: string,
     options?: { mimeType?: string; accountId?: string },
   ): Promise<MajikSignatureStamp> {
-    const id = this.getActiveAccount()?.id;
+    const id = options?.accountId ?? this.getActiveAccount()?.id;
     if (!id)
       throw new Error("No active account — call setActiveAccount() first");
     try {
