@@ -58,7 +58,9 @@ const FILE_FIXTURES: FileFixture[] = [
   { label: "JPEG Image", file: "sample.jpg", contentType: "image/jpg" },
   { label: "MP4 Video", file: "sample.mp4", contentType: "video/mp4" },
   { label: "MOV Video", file: "sample.mov", contentType: "video/mov" },
+  { label: "MKV Video", file: "sample.mkv", contentType: "video/x-matroska" },
   { label: "WAV Audio", file: "sample.wav", contentType: "audio/wav" },
+  { label: "FLAC Audio", file: "sample.flac", contentType: "audio/flac" },
   { label: "MP3 Audio", file: "sample.mp3", contentType: "audio/mp3" },
   {
     label: "Word Document",
