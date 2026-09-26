@@ -595,6 +595,16 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
   }
 
+  protected async recordActivity(
+    fingerprint: string | undefined,
+    options: Omit<
+      CreateUserActivityLogOptions,
+      "id" | "timestamp" | "fingerprint"
+    >,
+  ): Promise<UserActivityLog | null> {
+    return this._recordActivity(fingerprint, options);
+  }
+
   /**
    * Records a user activity entry without allowing logging failures to interrupt the calling operation.
    * @param fingerprint - Majik identity fingerprint used to identify the owning cryptographic account.
@@ -3410,7 +3420,7 @@ export class MajikSignatureClient extends MajikKeyClient<
   ): Promise<MajikSignatureStamp> {
     const identity = this._resolveMajikFileIdentity(options?.accountId);
     const raw = data instanceof Uint8Array ? data : new Uint8Array(data);
-    
+
     return this._stamps.replaceContent(id, raw, identity, options?.mimeType);
   }
 
