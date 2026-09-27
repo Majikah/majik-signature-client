@@ -56,7 +56,7 @@
     "@majikah/majik-contact": "^0.0.6",
     "@majikah/majik-file": "^0.5.1",
     "@majikah/majik-key": "^0.6.0",
-    "@majikah/majik-key-client": "^0.4.0",
+    "@majikah/majik-key-client": "^0.5.1",
     "@majikah/majik-signature": "^0.7.1",
     "fflate": "^0.8.3"
   },

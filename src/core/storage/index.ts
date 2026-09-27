@@ -1,6 +1,11 @@
 export * from "./sql-schema";
 
 export * from "./sql-db-manager";
+export {
+  type SQLiteTransport,
+  WorkerSQLiteTransport,
+} from "./sqlite-transport";
+
 export * from "./storage-adapter";
 export * from "./idb-adapter";
 
@@ -30,6 +35,3 @@ export * from "./stamps/adapter-memory";
 export type * from "./stamps/_types";
 
 export * from "./logs";
-
-
-
