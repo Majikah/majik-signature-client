@@ -116,7 +116,7 @@ export class MajikContactDirectory {
     }
 
     for (const contact of this.contacts.values()) {
-      const contactKey = await contact.getPublicKeyBase64();
+      const contactKey = await contact.getAddress();
       if (contactKey === address) {
         return contact;
       }

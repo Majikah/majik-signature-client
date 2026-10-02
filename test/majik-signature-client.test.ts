@@ -422,7 +422,7 @@ describe("MajikSignatureClient — comprehensive real-crypto unit/integration su
     });
 
     it("finds contacts by address and public keys", async () => {
-      const address = await contactA.getPublicKeyBase64();
+      const address = await contactA.getAddress();
 
       expect(await client.hasContactByAddress(address)).toBe(true);
       expect(await client.getContactByAddress(address)).toBe(contactA);

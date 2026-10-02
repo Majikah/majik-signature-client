@@ -563,17 +563,11 @@ export class MajikContactManager {
     const contact = this.getContact(contactId);
     if (!contact) return null;
 
-    let publicKeyBase64: string;
-    const anyPub: any = contact.publicKey;
-    if (anyPub?.raw instanceof Uint8Array) {
-      publicKeyBase64 = arrayBufferToBase64(anyPub.raw.buffer);
-    } else {
-      const raw = await crypto.subtle.exportKey(
-        "raw",
-        contact.publicKey as CryptoKey,
-      );
-      publicKeyBase64 = arrayBufferToBase64(raw);
-    }
+    const anyPub = contact.publicKey;
+
+    const publicKeyBase64 = arrayBufferToBase64(
+      anyPub.raw.buffer as ArrayBuffer,
+    );
 
     return JSON.stringify(
       {
@@ -604,18 +598,8 @@ export class MajikContactManager {
       }
 
       const rawBuffer = base64ToArrayBuffer(data.publicKey as string);
-      let publicKey: CryptoKey | { raw: Uint8Array };
-      try {
-        publicKey = await crypto.subtle.importKey(
-          "raw",
-          rawBuffer,
-          KEY_ALGO,
-          true,
-          [],
-        );
-      } catch {
-        publicKey = { raw: new Uint8Array(rawBuffer) };
-      }
+
+      const publicKey = { raw: new Uint8Array(rawBuffer) };
 
       const contact = new MajikContact({
         id: data.id,
@@ -653,17 +637,11 @@ export class MajikContactManager {
   }
 
   async exportContactCompressed(contact: MajikContact): Promise<string> {
-    let publicKeyBase64: string;
-    const anyPub: any = contact.publicKey;
-    if (anyPub?.raw instanceof Uint8Array) {
-      publicKeyBase64 = arrayBufferToBase64(anyPub.raw.buffer);
-    } else {
-      const raw = await crypto.subtle.exportKey(
-        "raw",
-        contact.publicKey as CryptoKey,
-      );
-      publicKeyBase64 = arrayBufferToBase64(raw);
-    }
+    const anyPub = contact.publicKey;
+
+    const publicKeyBase64 = arrayBufferToBase64(
+      anyPub.raw.buffer as ArrayBuffer,
+    );
 
     const jsonObj: MajikContactCard = {
       id: contact.id,
@@ -689,18 +667,8 @@ export class MajikContactManager {
     const data: MajikContactCard = JSON.parse(jsonStr);
 
     const rawBuffer = base64ToArrayBuffer(data.publicKey as string);
-    let publicKey: CryptoKey | { raw: Uint8Array };
-    try {
-      publicKey = await crypto.subtle.importKey(
-        "raw",
-        rawBuffer,
-        KEY_ALGO,
-        true,
-        [],
-      );
-    } catch {
-      publicKey = { raw: new Uint8Array(rawBuffer) };
-    }
+
+    const publicKey = { raw: new Uint8Array(rawBuffer) };
 
     if (!data?.id || !publicKey || !data?.fingerprint || !data?.mlKey) {
       throw new Error("Invalid contact JSON");
