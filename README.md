@@ -117,7 +117,7 @@ console.log(`Restored ${restoreResults.contacts} contacts.`);
 ---
 ## Author
 
-Made with 💙 by [@thezelijah](https://github.com/jedlsf)
+Developed by **Josef Elijah Fabian (Zelijah)** | [Majikah Solutions OPC](https://majikah.solutions/about)
 
 ## About the Developer
 
