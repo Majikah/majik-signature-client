@@ -9,7 +9,7 @@ import { BaseLog } from "./log-entry";
 import { BaseLogJSON } from "./types";
 import { LogType } from "./enums";
 
-export class LogManagerError extends Error {
+class LogManagerError extends Error {
   cause?: unknown;
   constructor(message: string, cause?: unknown) {
     super(message);

@@ -17,7 +17,7 @@ import {
 } from "../storage";
 import { MajikKey } from "@majikah/majik-key";
 
-export class MajikSignatureStampManagerError extends Error {
+class MajikSignatureStampManagerError extends Error {
   cause?: unknown;
   constructor(message: string, cause?: unknown) {
     super(message);

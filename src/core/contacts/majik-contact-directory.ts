@@ -1,4 +1,3 @@
-import { KEY_ALGO } from "../crypto/constants";
 import { MAJIK_API_RESPONSE } from "../types";
 import { base64ToArrayBuffer } from "../utils/utilities";
 import {
@@ -229,23 +228,11 @@ export class MajikContactDirectory {
 
     for (const item of data.contacts) {
       const raw = base64ToArrayBuffer(item.publicKeyBase64);
-      let publicKey: CryptoKey | { raw: Uint8Array };
-      try {
-        publicKey = await crypto.subtle.importKey(
-          "raw",
-          raw,
-          KEY_ALGO,
-          true,
-          [],
-        );
-      } catch (e) {
-        // Fallback: create a raw-key wrapper when the browser does not support the namedCurve
-        publicKey = { raw: new Uint8Array(raw) };
-      }
+      const publicKey = { raw: new Uint8Array(raw) };
 
       const contact = MajikContact.create(
         item.id,
-        publicKey as any,
+        publicKey,
         item.mlKey,
         item.fingerprint,
         item.meta,

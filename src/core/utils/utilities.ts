@@ -3,7 +3,7 @@
  * ================================ */
 
 import { MnemonicJSON } from "@majikah/majik-key";
-import { MnemonicLanguage } from "@majikah/majik-key/dist/core/crypto/wordlist";
+import { MnemonicLanguage } from "@majikah/majik-key";
 
 // utils/utilities.ts
 export function arrayToBase64(data: Uint8Array): string {

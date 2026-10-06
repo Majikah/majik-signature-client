@@ -1653,55 +1653,6 @@ describe("MajikSignatureClient — comprehensive real-crypto unit/integration su
     });
   });
 
-  describe("Static image stamping helpers", () => {
-    const hasBrowserImageDecoder =
-      typeof (globalThis as { createImageBitmap?: unknown })
-        .createImageBitmap === "function";
-
-    it.runIf(hasBrowserImageDecoder)(
-      "stamps and inspects a real PNG fixture when browser image decoding is available",
-      async () => {
-        const png = new Blob([loadFixture("sample.png") as BlobPart], {
-          type: "image/png",
-        });
-
-        const stamped = await MajikSignatureClient.stampImage(png, keyA);
-
-        expect(stamped.blob).toBeInstanceOf(Blob);
-        expect(stamped.stub).toBeDefined();
-        expect(stamped.fullEnvelope.signerId).toBe(keyA.fingerprint);
-
-        const isStamped = await MajikSignatureClient.isStamped(stamped.blob);
-        expect(isStamped).toBe(true);
-
-        const inspection = await MajikSignatureClient.inspectStamp(
-          stamped.blob,
-        );
-        expect(inspection.hasPixelRow || inspection.hasDct).toBe(true);
-
-        const verification = await MajikSignatureClient.verifyStamp(
-          stamped.blob,
-        );
-        expect(verification.valid).toBe(true);
-      },
-    );
-
-    it.runIf(!hasBrowserImageDecoder)(
-      "reports the browser-only image decoding requirement in Node",
-      async () => {
-        const png = new Blob([loadFixture("sample.png") as BlobPart], {
-          type: "image/png",
-        });
-
-        await expect(
-          MajikSignatureClient.stampImage(png, keyA),
-        ).rejects.toThrow(
-          "decodeImage requires a browser environment with createImageBitmap",
-        );
-      },
-    );
-  });
-
   describe("MJKS map batch operations", () => {
     let client: MajikSignatureClient;
     let files: Array<{ path: string; blob: Blob }>;

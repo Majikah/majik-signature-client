@@ -15,7 +15,6 @@ import {
   arrayToBase64,
   base64ToArrayBuffer,
 } from "../utils/utilities";
-import { KEY_ALGO } from "../crypto/constants";
 import { gunzipSync, gzipSync } from "fflate";
 import { MajikContactStorageAdapter } from "../storage/contact-directory/contacts/_types";
 import { MajikContactGroupStorageAdapter } from "../storage/contact-directory/groups/_types";
@@ -104,22 +103,11 @@ export class MajikContactManager {
     for (const item of serializedContacts) {
       try {
         const raw = base64ToArrayBuffer(item.publicKeyBase64);
-        let publicKey: CryptoKey | { raw: Uint8Array };
-        try {
-          publicKey = await crypto.subtle.importKey(
-            "raw",
-            raw,
-            KEY_ALGO,
-            true,
-            [],
-          );
-        } catch {
-          publicKey = { raw: new Uint8Array(raw) };
-        }
+        const publicKey = { raw: new Uint8Array(raw) };
 
         const contact = MajikContact.create(
           item.id,
-          publicKey as any,
+          publicKey,
           item.mlKey,
           item.fingerprint,
           item.meta,

@@ -23,9 +23,11 @@ import {
   BatchVerifyInput,
   MajikSignature,
   MajikSignatureEnvelope,
+  MajikSignatureMap,
+  normalizeToBytes,
 } from "@majikah/majik-signature";
-import { normalizeToBytes } from "@majikah/majik-signature/dist/core/embed/utils";
-import {
+
+import type {
   BatchVerifyOptions,
   EnvelopeInfo,
   EnvelopeInput,
@@ -33,7 +35,6 @@ import {
   FileLike,
   FileVerifyResult,
   MajikSignatureJSON,
-  MajikSignatureMap,
   MajikSignerPublicKeys,
   MajikTimestamp,
   MjksMapResolveStatus,
@@ -42,17 +43,14 @@ import {
   SignatoriesFilter,
   SignatoriesResult,
   SignatoryInfo,
+  SignatureOrderResult,
   SignOptions,
   VerificationResult,
 } from "@majikah/majik-signature";
 import { base64ToUint8Array } from "./core/utils/utilities";
 
 import { AppBackUpData, MAJIK_API_RESPONSE } from "./core/types";
-import {
-  ImageSignatureStub,
-  ImageSignOptions,
-  ImageVerificationResult,
-} from "@majikah/majik-signature/dist/core/stamp";
+
 import {
   MajikContactManager,
   MajikContactManagerAdapters,
@@ -111,7 +109,6 @@ import {
   HistoryStatuses,
   HistoryTypes,
 } from "./core/log/core/enums";
-import { SignatureOrderResult } from "@majikah/majik-signature/dist/core/order";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -3441,40 +3438,6 @@ export class MajikSignatureClient extends MajikKeyClient<
 
     this._emit("removed-stamp", id);
     return true;
-  }
-
-  // ── STAMP (compression-resistant image signing) ───────────────────────────
-
-  /**
-   * Creates a signed/stamped image using the supplied key.
-   * @param image - Value used by the stamp image operation.
-   * @param key - MajikKey used as the cryptographic identity for the operation.
-   * @param options - Optional operation-specific settings.
-   * @returns The result of the stamp image operation (`Promise<{ blob: Blob; stub: ImageSignatureStub; fullEnvelope: MajikSignatureJSON; }>`).
-   */
-  static async stampImage(
-    image: Blob,
-    key: MajikKey,
-    options?: ImageSignOptions,
-  ): Promise<{
-    blob: Blob;
-    stub: ImageSignatureStub;
-    fullEnvelope: MajikSignatureJSON;
-  }> {
-    return MajikSignature.stampImage(image, key, options);
-  }
-
-  /**
-   * Verifies an image stamp and returns the detected signature information.
-   * @param image - Value used by the verify stamp operation.
-   * @param options - Optional operation-specific settings.
-   * @returns The result of the verify stamp operation (`Promise<ImageVerificationResult>`).
-   */
-  static async verifyStamp(
-    image: Blob,
-    options?: { hammingThreshold?: number },
-  ): Promise<ImageVerificationResult> {
-    return MajikSignature.verifyStamp(image, options);
   }
 
   /**

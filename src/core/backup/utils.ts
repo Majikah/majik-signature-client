@@ -16,13 +16,14 @@ export function prependMagic(
   out.set(payloadBytes, header.byteLength);
   return out;
 }
+
 /**
  * Validates and strips the magic-byte header from a raw buffer.
  *
  * @throws Error if the header does not match the expected magic bytes.
  * @returns The payload bytes (everything after the header).
  */
-export function stripMagic(
+function stripMagic(
   expected: Uint8Array,
   buffer: Uint8Array,
   label: string,
@@ -65,7 +66,7 @@ export async function readBackupBlob(
  * Normalizes a Blob or ArrayBuffer-like value to a Uint8Array.
  * Accepts Blob, ArrayBuffer, SharedArrayBuffer, or any typed array view.
  */
-export async function toUint8Array(
+async function toUint8Array(
   input: Blob | ArrayBufferLike | ArrayBufferView,
 ): Promise<Uint8Array> {
   if (input instanceof Blob) {

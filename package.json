@@ -53,11 +53,11 @@
   },
   "dependencies": {
     "@majikah/majik-cjson": "^0.0.3",
-    "@majikah/majik-contact": "^0.1.1",
-    "@majikah/majik-file": "^0.5.2",
-    "@majikah/majik-key": "^0.7.0",
-    "@majikah/majik-key-client": "^0.6.1",
-    "@majikah/majik-signature": "^0.8.0",
+    "@majikah/majik-contact": "^0.2.0",
+    "@majikah/majik-file": "^0.6.0",
+    "@majikah/majik-key": "^1.0.2",
+    "@majikah/majik-key-client": "^0.7.0",
+    "@majikah/majik-signature": "^0.9.4",
     "fflate": "^0.8.3"
   },
   "devDependencies": {
