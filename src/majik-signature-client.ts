@@ -15,7 +15,7 @@
  * to both MajikSignature and MajikSignatureClient at construction time.
  */
 
-import { MajikKey, MajikKeyAddress } from "@majikah/majik-key";
+import { KeyId, MajikKey, MajikKeyAddress } from "@majikah/majik-key";
 
 import {
   BatchFileInput,
@@ -4115,7 +4115,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       await this._keys.ensureUnlocked(id);
       key = this._keys.get(id);
       if (!key) throw new Error(`Account not found in keystore: "${id}"`);
-      if (!key.hasSigningKeys) {
+      if (!key.hasKeys([KeyId.ED25519, KeyId.ML_DSA_87])) {
         throw new Error(
           `Account "${id}" has no signing keys. ` +
             `Re-import via importAccountFromMnemonicBackup() to enable signing.`,
