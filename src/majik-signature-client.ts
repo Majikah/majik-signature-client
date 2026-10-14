@@ -313,6 +313,8 @@ export class MajikSignatureClient extends MajikKeyClient<
   /** User activity log manager used for non-blocking activity records. */
   private _activity: UserActivityLogManager;
 
+  private _signingSessionDepth = 0;
+
   /**
    * Creates a Majik Signature client with the supplied managers and storage adapters.
    *
@@ -2146,8 +2148,18 @@ export class MajikSignatureClient extends MajikKeyClient<
       timestamp?: string;
       mimeType?: string;
       validUntil?: string;
+      /** Pre-stamp original, when the current file's embedded envelope was
+       *  destroyed by a wholesale re-encode (PDF flatten, image re-render,
+       *  audio re-mux). Lets the prior signature chain be recovered. */
+      priorSignedFile?: Blob;
     }>,
-    options?: { accountId?: string },
+    options?: {
+      accountId?: string;
+      expectedSigners?: ExpectedSigner[];
+
+      /** Optional note attached to this specific revision. */
+      message?: string;
+    },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<
     Array<{
@@ -2162,13 +2174,23 @@ export class MajikSignatureClient extends MajikKeyClient<
     return this._withSigningKey(options?.accountId, "batchSignFiles", (key) =>
       Promise.all(
         files.map(
-          async ({ file, contentType, timestamp, mimeType, validUntil }) => {
+          async ({
+            file,
+            contentType,
+            timestamp,
+            mimeType,
+            validUntil,
+            priorSignedFile,
+          }) => {
             try {
               const result = await MajikSignature.signFile(file, key, {
                 contentType,
                 timestamp,
                 mimeType,
                 validUntil,
+                priorSignedFile,
+                expectedSigners: options?.expectedSigners,
+                message: options?.message,
               });
 
               this._recordHistory(key.fingerprint, {
@@ -4121,7 +4143,9 @@ export class MajikSignatureClient extends MajikKeyClient<
             `Re-import via importAccountFromMnemonicBackup() to enable signing.`,
         );
       }
-      shouldRelock = !(await this.isOnetimeUnlockEnabled());
+      shouldRelock =
+        this._signingSessionDepth === 0 &&
+        !(await this.isOnetimeUnlockEnabled());
       return await fn(key);
     } catch (err) {
       this._emit("error", err, { context });
@@ -4129,6 +4153,47 @@ export class MajikSignatureClient extends MajikKeyClient<
     } finally {
       if (shouldRelock) key?.lock();
     }
+  }
+
+  /**
+   * Unlock once, run `fn` (which may call signFile/seal/etc. any number of
+   * times), then re-lock once at the end if one-time unlock is disabled.
+   */
+  async withSigningSession<T>(
+    accountId: string | undefined,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const id = accountId ?? this.getActiveAccount()?.id;
+    if (!id)
+      throw new Error("No active account — call setActiveAccount() first");
+
+    await this._keys.ensureUnlocked(id);
+    this._signingSessionDepth++;
+    try {
+      return await fn();
+    } finally {
+      this._signingSessionDepth = Math.max(0, this._signingSessionDepth - 1);
+      if (this._signingSessionDepth === 0) {
+        try {
+          if (!(await this.isOnetimeUnlockEnabled())) {
+            this._keys.get(id)?.lock();
+          }
+        } catch (err) {
+          // Fail closed: if we can't read the preference, lock anyway.
+          this._keys.get(id)?.lock();
+          console.warn("withSigningSession: relock check failed", err);
+        }
+      }
+    }
+  }
+
+  get isSigningSessionActive(): boolean {
+    return this._signingSessionDepth > 0;
+  }
+
+  forceEndSigningSession(): void {
+    this._signingSessionDepth = 0;
+    return;
   }
 
   /**
