@@ -2025,6 +2025,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       priorSignedFile?: Blob;
       /** Optional note attached to this specific revision. */
       message?: string;
+      saveHistory?: boolean;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<Awaited<ReturnType<typeof MajikSignature.signFile>>> {
@@ -2043,6 +2044,8 @@ export class MajikSignatureClient extends MajikKeyClient<
         await signedResponse.blob.arrayBuffer(),
       );
 
+      const recordHistory = options?.saveHistory ?? true;
+
       this._recordHistory(key.fingerprint, {
         reference_id: signedResponse.signature.contentHash,
         historyType: HistoryTypes.SIGN,
@@ -2054,8 +2057,8 @@ export class MajikSignatureClient extends MajikKeyClient<
           sealed: false,
           tsa: false,
         },
-        signerCount: 1,
-        data: signedBytes,
+        signerCount: signedResponse.envelope.signatures.length,
+        data: recordHistory ? signedBytes : undefined,
         identity: this._identityFromKey(key),
       }).catch((err) => console.warn(err));
 
@@ -3201,7 +3204,12 @@ export class MajikSignatureClient extends MajikKeyClient<
 
   async seal(
     file: FileLike,
-    options?: { mimeType?: string; timestamp?: string; accountId?: string },
+    options?: {
+      mimeType?: string;
+      timestamp?: string;
+      accountId?: string;
+      saveHistory?: boolean;
+    },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<Awaited<ReturnType<typeof MajikSignature.seal>>> {
     return this._withSigningKey(options?.accountId, "seal", async (key) => {
@@ -3211,6 +3219,8 @@ export class MajikSignatureClient extends MajikKeyClient<
       });
 
       const sealedBytes = new Uint8Array(await sealResult.blob.arrayBuffer());
+
+      const recordHistory = options?.saveHistory ?? true;
 
       this._recordHistory(key.fingerprint, {
         reference_id: sealResult.sealInfo.sealHash,
@@ -3223,7 +3233,7 @@ export class MajikSignatureClient extends MajikKeyClient<
           sealed: true,
           tsa: false,
         },
-        data: sealedBytes,
+        data: recordHistory ? sealedBytes : undefined,
         identity: this._identityFromKey(key),
       }).catch((err) => console.warn(err));
 
