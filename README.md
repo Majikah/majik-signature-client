@@ -123,7 +123,7 @@ Developed by **Josef Elijah Fabian (Zelijah)** | [Majikah Solutions OPC](https:/
 
 - **Developer**: Josef Elijah Fabian
 - **GitHub**: [https://github.com/jedlsf](https://github.com/jedlsf)
-- **Project Repository**: [https://github.com/Majikah/majik-signature](https://github.com/Majikah/majik-signature)
+- **Project Repository**: [https://github.com/Majikah/majik-signature-client](https://github.com/Majikah/majik-signature-client)
 
 ---
 
