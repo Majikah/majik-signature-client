@@ -2091,6 +2091,11 @@ export class MajikSignatureClient extends MajikKeyClient<
       validUntil?: string;
       existingEnvelope?: EnvelopeInput;
       tsa?: MajikTimestamp;
+      /** The file as previous signers signed it, BEFORE this signer's own
+       *  modification (e.g. a stamp). Requires existingEnvelope. */
+      priorFile?: FileLike;
+      /** Optional revision note recorded in the fileVersions entry. */
+      message?: string;
     },
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<Awaited<ReturnType<typeof MajikSignature.signFileDetached>>> {
@@ -2109,6 +2114,8 @@ export class MajikSignatureClient extends MajikKeyClient<
             existingEnvelope: options?.existingEnvelope,
             tsa: options?.tsa,
             validUntil: options?.validUntil,
+            priorFile: options?.priorFile,
+            message: options?.message,
           },
         );
 
@@ -2417,6 +2424,7 @@ export class MajikSignatureClient extends MajikKeyClient<
           {
             expectedSignerId: options?.expectedSignerId,
             mimeType: options?.mimeType,
+            now: options?.now,
           },
         );
         result = results[0];
@@ -2491,6 +2499,28 @@ export class MajikSignatureClient extends MajikKeyClient<
     options?: { mimeType?: string; now?: Date },
   ): Promise<ReturnType<typeof MajikSignature.verifyFileChain>> {
     return MajikSignature.verifyFileChain(file, options);
+  }
+
+  /**
+   * Verifies the revision chain of a detached envelope against the file.
+   * Latest signer is checked against the file's current bytes; earlier signers
+   * are commitment-only. Throws if the envelope has no fileVersions.
+   */
+  async verifyFileDetachedChain(
+    file: FileLike,
+    envelope: EnvelopeInput,
+    options?: { mimeType?: string; now?: Date },
+  ): Promise<ReturnType<typeof MajikSignature.verifyFileDetachedChain>> {
+    try {
+      return await MajikSignature.verifyFileDetachedChain(
+        file,
+        envelope,
+        options,
+      );
+    } catch (err) {
+      this._emit("error", err, { context: "verifyFileDetachedChain" });
+      return Promise.reject(err);
+    }
   }
 
   /**
@@ -2653,6 +2683,7 @@ export class MajikSignatureClient extends MajikKeyClient<
       }
 
       const signatures = resolvedEnvelope.signatures;
+
       if (!signatures.length) {
         return [
           {
@@ -2663,6 +2694,47 @@ export class MajikSignatureClient extends MajikKeyClient<
             reason: "Envelope contains no signatures",
           } as VerifyResult,
         ];
+      }
+
+      // Chained envelopes can't be checked flat: earlier revisions' bytes no longer exist.
+      if (resolvedEnvelope.fileVersions.length > 0) {
+        try {
+          const chain = await MajikSignature.verifyFileDetachedChain(
+            file,
+            resolvedEnvelope,
+            { now },
+          );
+          const results = [chain.latest, ...chain.history].map((r) => ({
+            ...r,
+            signerLabel: r.signerId
+              ? this.resolveSignerLabel(r.signerId)
+              : undefined,
+          })) as VerifyResult[];
+
+          // Per-signature results can all pass while the chain itself is broken.
+          // Callers treat results.every(r => r.valid) as the verdict, so surface
+          // that as an extra failing entry.
+          if (!chain.chainValid && results.every((r) => r.valid)) {
+            results.push({
+              valid: false,
+              signerId: "",
+              contentHash: "",
+              timestamp: new Date().toISOString(),
+              reason: "Revision chain integrity check failed",
+            } as VerifyResult);
+          }
+          return results;
+        } catch (err) {
+          return [
+            {
+              valid: false,
+              signerId: "",
+              contentHash: "",
+              timestamp: new Date().toISOString(),
+              reason: err instanceof Error ? err.message : String(err),
+            } as VerifyResult,
+          ];
+        }
       }
 
       const contentBytes = await normalizeToBytes(file);
