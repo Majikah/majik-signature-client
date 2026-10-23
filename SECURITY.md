@@ -47,7 +47,7 @@ Once the library reaches `1.0.0`, this table will be updated with a defined supp
 
 Report privately via:
 
-1. **GitHub Private Vulnerability Reporting**  — [github.com/Majikah/majik-signature/security](https://github.com/Majikah/majik-signature/security)
+1. **GitHub Private Vulnerability Reporting**  — [github.com/Majikah/majik-signature-client/security](https://github.com/Majikah/majik-signature-client/security)
 2. **Email** — [business@majikah.solutions](mailto:business@majikah.solutions), with `SECURITY` in the subject line
 
 Please include:
