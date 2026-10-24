@@ -2562,6 +2562,30 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
   }
 
+  async verifyFileRevisionsDetached(
+    finalFile: FileLike,
+    revisions: FileLike[],
+    envelope: EnvelopeInput,
+    options?: {
+      mimeType?: string;
+      now?: Date;
+      resolvePublicKeys?: (
+        signerId: string,
+      ) => MajikSignerPublicKeys | Promise<MajikSignerPublicKeys>;
+    },
+  ): Promise<ReturnType<typeof MajikSignature.verifyFileRevisionsDetached>> {
+    try {
+      return await MajikSignature.verifyFileRevisionsDetached(
+        finalFile,
+        revisions,
+        envelope,
+        options,
+      );
+    } catch (err) {
+      this._emit("error", err, { context: "verifyFileRevisionsDetached" });
+      throw err;
+    }
+  }
   // ── Verify ALL signatures (embedded) ──────────────────────────────────────
 
   /**

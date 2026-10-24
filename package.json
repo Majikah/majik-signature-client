@@ -58,7 +58,7 @@
     "@majikah/majik-file": "^0.7.1",
     "@majikah/majik-key": "^1.1.0",
     "@majikah/majik-key-client": "^0.8.0",
-    "@majikah/majik-signature": "^1.1.0",
+    "@majikah/majik-signature": "^1.2.0",
     "fflate": "^0.8.3"
   },
   "devDependencies": {
