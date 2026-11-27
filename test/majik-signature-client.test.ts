@@ -1827,7 +1827,7 @@ describe("MajikSignatureClient — comprehensive real-crypto unit/integration su
     it("rejects malformed streaming descriptors and unbounded metadata values", async () => {
       await expect(
         client.signBatchDetachedStream([
-          { path: "docs/one.bin", source: {} as any, totalBytes: 1 },
+          { path: "docs/one.bin", source: {} as never, totalBytes: 1 },
         ]),
       ).rejects.toThrow(/byte source/i);
       await expect(

@@ -298,7 +298,7 @@ function normalizeStreamingManifestPath(path: string): string {
     .replace(/\\/g, "/")
     .trim()
     .replace(/^[a-zA-Z]:/, "")
-    .replace(/^\\/+/, "");
+    .replace(/^\/+/, "");
 }
 
 /**
@@ -331,7 +331,7 @@ function validateStreamingBatchInputs(
     }
     if (
       path.length > MAX_STREAMING_BATCH_PATH_CHARS ||
-      /[\\u0000-\\u001f\\u007f\\u202a-\\u202e\\u2066-\\u2069]/u.test(path)
+      /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(path)
     ) {
       fail(`files[${index}].path exceeds the supported length or contains unsafe control characters`);
     }
@@ -377,7 +377,7 @@ function validateStreamingBatchInputs(
       if (
         typeof file.mimeType !== "string" ||
         file.mimeType.length > MAX_STREAMING_BATCH_MIME_TYPE_CHARS ||
-        /[\\u0000-\\u001f\\u007f]/u.test(file.mimeType)
+        /[\u0000-\u001f\u007f]/u.test(file.mimeType)
       ) {
         fail(`files[${index}].mimeType exceeds the supported length or contains control characters`);
       }
