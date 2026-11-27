@@ -1713,6 +1713,101 @@ describe("MajikSignatureClient — comprehensive real-crypto unit/integration su
       ).toBe(true);
     });
 
+    it("signs and verifies a MJKSMAP using bounded-memory streams", async () => {
+      const progress: Array<{
+        index: number;
+        totalFiles: number;
+        path: string;
+        bytesProcessed: number;
+        totalBytes?: number;
+      }> = [];
+
+      const signed = await client.signBatchDetachedStream(
+        files.map((file) => ({
+          path: file.path,
+          source: file.blob.stream(),
+          totalBytes: file.blob.size,
+          mimeType: file.blob.type,
+        })),
+        {
+          mode: "map",
+          onProgress: (update) => progress.push(update),
+        },
+      );
+
+      expect(signed.mode).toBe("map");
+      if (signed.mode !== "map") throw new Error("Expected map output");
+      expect(signed.map.size).toBe(2);
+      expect(signed.mapBlob.size).toBeGreaterThan(0);
+      expect(progress).toHaveLength(2);
+      expect(progress.map((update) => update.path)).toEqual([
+        "docs/one.txt",
+        "docs/two.txt",
+      ]);
+
+      const verified = await client.verifyMjksMapStream(
+        signed.mapBlob,
+        [
+          {
+            path: "docs/one.txt",
+            source: files[0].blob.stream(),
+            totalBytes: files[0].blob.size,
+          },
+          {
+            path: "moved/two.txt",
+            source: files[1].blob.stream(),
+            totalBytes: files[1].blob.size,
+          },
+        ],
+        { key: keyA, requireAllPresent: true },
+      );
+
+      expect(verified.trustedKeys).toBe(true);
+      expect(verified.results.map((entry) => entry.status)).toEqual([
+        "verified",
+        "verified",
+      ]);
+      expect(verified.results[1].relocatedFrom).toBe("docs/two.txt");
+      expect(verified.missingFromBatch).toHaveLength(0);
+    });
+
+    it("supports separate MJKSIG outputs for streaming batches", async () => {
+      const result = await client.signBatchDetachedStream(
+        files.map((file) => ({
+          path: file.path,
+          source: file.blob.stream(),
+          totalBytes: file.blob.size,
+          mimeType: file.blob.type,
+        })),
+        { mode: "separate" },
+      );
+
+      expect(result.mode).toBe("separate");
+      if (result.mode !== "separate") {
+        throw new Error("Expected separate streaming outputs");
+      }
+      expect(result.signatures).toHaveLength(2);
+      expect(result.signatures.every((entry) => entry.blob.size > 0)).toBe(
+        true,
+      );
+    });
+
+    it("requires trusted signer keys for streaming MJKSMAP verification", async () => {
+      const signed = await client.signBatchDetached(files);
+      if (signed.mode !== "map") throw new Error("Expected map output");
+
+      await expect(
+        client.verifyMjksMapStream(
+          signed.mapBlob,
+          files.map((file) => ({
+            path: file.path,
+            source: file.blob.stream(),
+            totalBytes: file.blob.size,
+          })),
+        ),
+      ).rejects.toThrow(/requires a trusted key/i);
+    });
+
     it("verifies an MJKS map in trusted-key mode", async () => {
       const signed = await client.signBatchDetached(files);
 
