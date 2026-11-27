@@ -8,5 +8,8 @@
 - Add `verifyMjksMapStream()` for sequential streaming manifest verification using a trusted signer key/contact/address.
 - Preserve buffered batch APIs and self-reported-key verification behavior for compatibility.
 - Add client-level history recording for successful streaming detached batch outputs.
+- Add preflight bounds for batch counts, normalized manifest paths, MIME metadata, byte-source descriptors, declared lengths, and per-file streaming limits.
+- Add adversarial tests for oversized batches, path traversal/control characters, normalized duplicate paths, malformed sources, oversized metadata, and invalid declared lengths.
+- Expand API documentation, correct README trust-boundary wording, and add the repository security policy.
 - Add tests for streaming map signing, trusted-key verification, relocation, progress, separate outputs, and trusted-key requirements.
 

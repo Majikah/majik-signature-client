@@ -285,6 +285,117 @@ export interface MjksMapOrderFileResult {
   reason?: string;
 }
 
+/** Client-side batch bound aligned with the core MJKSMAP entry limit. */
+const MAX_STREAMING_BATCH_FILES = 10_000;
+/** Maximum raw logical manifest path length, in UTF-16 code units (core contract). */
+const MAX_STREAMING_BATCH_PATH_CHARS = 4_096;
+/** Maximum MIME metadata length, in UTF-16 code units (core contract). */
+const MAX_STREAMING_BATCH_MIME_TYPE_CHARS = 1_024;
+
+/** Normalize a manifest path using the same aliases as the core MJKSMAP model. */
+function normalizeStreamingManifestPath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .trim()
+    .replace(/^[a-zA-Z]:/, "")
+    .replace(/^\\/+/, "");
+}
+
+/**
+ * Validate batch metadata before unlocking a signing key or consuming a byte
+ * source. Envelope parsing and cryptographic validation remain in the core.
+ */
+function validateStreamingBatchInputs(
+  files: unknown,
+  operation: string,
+): asserts files is Array<StreamingBatchFileInput | StreamingBatchVerifyInput> {
+  const fail = (message: string): never => {
+    throw new TypeError(`${operation}: ${message}`);
+  };
+  if (!Array.isArray(files)) fail("files must be an array");
+  if (files.length === 0) fail("at least one file is required");
+  if (files.length > MAX_STREAMING_BATCH_FILES) {
+    fail(`batch exceeds the ${MAX_STREAMING_BATCH_FILES}-file client limit`);
+  }
+
+  const seen = new Set<string>();
+  for (let index = 0; index < files.length; index++) {
+    const candidate: unknown = files[index];
+    if (!candidate || typeof candidate !== "object") {
+      fail(`files[${index}] must be an object`);
+    }
+    const file = candidate as Record<string, unknown>;
+    const path = file.path;
+    if (typeof path !== "string" || path.trim().length === 0) {
+      fail(`files[${index}].path must be a non-empty string`);
+    }
+    if (
+      path.length > MAX_STREAMING_BATCH_PATH_CHARS ||
+      /[\\u0000-\\u001f\\u007f\\u202a-\\u202e\\u2066-\\u2069]/u.test(path)
+    ) {
+      fail(`files[${index}].path exceeds the supported length or contains unsafe control characters`);
+    }
+    const normalizedPath = normalizeStreamingManifestPath(path);
+    if (
+      !normalizedPath ||
+      normalizedPath.split("/").some((segment) => segment === "..")
+    ) {
+      fail(`files[${index}].path must resolve to a non-traversing relative path`);
+    }
+    if (seen.has(normalizedPath)) {
+      fail(`duplicate manifest path after normalization: ${normalizedPath}`);
+    }
+    seen.add(normalizedPath);
+
+    const source = file.source;
+    const sourceObject = source as {
+      getReader?: unknown;
+      [Symbol.asyncIterator]?: unknown;
+    } | null;
+    const isByteSource =
+      source instanceof Uint8Array ||
+      source instanceof ArrayBuffer ||
+      (typeof Blob !== "undefined" && source instanceof Blob) ||
+      (!!sourceObject && typeof sourceObject === "object" &&
+        (typeof sourceObject.getReader === "function" ||
+          typeof sourceObject[Symbol.asyncIterator] === "function"));
+    if (!isByteSource) {
+      fail(`files[${index}].source must be a byte source, readable stream, or async iterable`);
+    }
+
+    if (file.totalBytes !== undefined) {
+      if (
+        typeof file.totalBytes !== "number" ||
+        !Number.isSafeInteger(file.totalBytes) ||
+        file.totalBytes < 0
+      ) {
+        fail(`files[${index}].totalBytes must be a non-negative safe integer`);
+      }
+    }
+
+    if (file.mimeType !== undefined) {
+      if (
+        typeof file.mimeType !== "string" ||
+        file.mimeType.length > MAX_STREAMING_BATCH_MIME_TYPE_CHARS ||
+        /[\\u0000-\\u001f\\u007f]/u.test(file.mimeType)
+      ) {
+        fail(`files[${index}].mimeType exceeds the supported length or contains control characters`);
+      }
+    }
+  }
+}
+
+/** Reject malformed runtime values before forwarding per-file hashing limits. */
+function validateStreamingMaxBytes(maxBytes: unknown, operation: string): void {
+  if (
+    maxBytes !== undefined &&
+    (typeof maxBytes !== "number" ||
+      !Number.isSafeInteger(maxBytes) ||
+      maxBytes < 0)
+  ) {
+    throw new TypeError(`${operation}: streaming.maxBytes must be a non-negative safe integer`);
+  }
+}
 // ─── MajikSignatureClient ─────────────────────────────────────────────────────
 
 /**
@@ -614,6 +725,16 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
   }
 
+  /**
+   * Protected compatibility hook that delegates activity persistence to the
+   * client's non-blocking activity logger.
+   *
+   * @param fingerprint - Fingerprint of the account associated with the action,
+   *   or `undefined` when the action is not account-scoped.
+   * @param options - Activity fields excluding the generated identifier,
+   *   timestamp, and fingerprint.
+   * @returns The persisted activity record, or `null` when logging fails.
+   */
   protected async recordActivity(
     fingerprint: string | undefined,
     options: Omit<
@@ -2582,6 +2703,19 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
   }
 
+  /**
+   * Verify a detached signature envelope across the supplied file revision chain.
+   *
+   * @param finalFile - Latest file content in the revision sequence.
+   * @param revisions - Earlier file revisions in the order required by the
+   *   core revision verifier.
+   * @param envelope - Detached signature envelope or serialized envelope input.
+   * @param options - Optional MIME hint, verification time, and trusted-key
+   *   resolver for signers represented in the revision chain.
+   * @returns The core detached revision-verification result.
+   * @throws {Error} When revision metadata cannot be resolved or verification
+   *   cannot be completed.
+   */
   async verifyFileRevisionsDetached(
     finalFile: FileLike,
     revisions: FileLike[],
@@ -3759,19 +3893,41 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   /**
-   * Sign canonical byte streams as detached batch signatures without
-   * materializing the source files. The existing buffered batch API remains
-   * available as signBatchDetached().
+   * Sign a collection of canonical byte sources as detached batch signatures.
    *
-   * @param files - Unique manifest paths and one-shot canonical byte sources.
-   * @param options - Batch output, streaming, progress, and account settings.
-   * @param source - History source recorded for successfully signed outputs.
+   * Files are consumed sequentially, so source contents are not collected into
+   * one batch-sized byte array. The core streaming hasher enforces the configured
+   * chunk policy and optional per-file `streaming.maxBytes` limit.
+   *
+   * @remarks
+   * Each source must yield the exact canonical unsigned bytes to sign. This
+   * wrapper does not detect, strip, or rewrite an embedded signature; use the
+   * format-aware file APIs when canonicalization is required. Input count,
+   * manifest paths, MIME metadata, and declared lengths are checked before the
+   * signing key is unlocked or a source is consumed.
+   *
+   * @param files - Non-empty batch of unique relative manifest paths and
+   *   one-shot byte sources. `totalBytes`, when supplied, must be an exact,
+   *   non-negative safe-integer length.
+   * @param options - Batch output mode, signer policy, streaming controls,
+   *   progress callback, and optional account selection.
+   * @param source - History source recorded for each successfully signed output.
+   * @returns The core batch result: one MJKSMAP manifest or separate MJKSIG
+   *   sidecars, together with per-file failures when continuation is enabled.
+   * @throws {TypeError} When batch metadata or runtime byte-source descriptors
+   *   exceed the client input bounds or have an invalid shape.
+   * @throws {Error} When account, signing, or core streaming validation fails.
    */
   async signBatchDetachedStream(
     files: StreamingBatchFileInput[],
     options?: BatchStreamingOptions & { accountId?: string },
     source: HistorySource = HistorySources.SYSTEM,
   ): ReturnType<typeof MajikSignature.signBatchDetachedStream> {
+    validateStreamingBatchInputs(files, "signBatchDetachedStream");
+    validateStreamingMaxBytes(options?.streaming?.maxBytes, "signBatchDetachedStream");
+    if (options?.mode !== undefined && options.mode !== "map" && options.mode !== "separate") {
+      throw new TypeError("signBatchDetachedStream: mode must be \"map\" or \"separate\"");
+    }
     const { accountId, ...streamOptions } = options ?? {};
 
     return this._withSigningKey(accountId, "signBatchDetachedStream", async (key) => {
@@ -3939,6 +4095,8 @@ export class MajikSignatureClient extends MajikKeyClient<
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<MjksMapVerifyResult> {
     try {
+      validateStreamingBatchInputs(files, "verifyMjksMapStream");
+      validateStreamingMaxBytes(options?.streaming?.maxBytes, "verifyMjksMapStream");
       const map = await MajikSignatureMap.from(mapInput);
       const publicKeys = await this._resolveSignerPublicKeys(options);
 
@@ -4030,16 +4188,29 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   /**
-   * Verify canonical byte streams against a MJKSMAP manifest without
-   * materializing their contents. A trusted signer key/contact is required.
+   * Verify canonical byte sources against a MJKSMAP manifest in a single pass.
    *
-   * Path-first tamper detection and content-hash relocation semantics match
-   * verifyMjksMap(). The existing method remains available for self-reported
-   * envelope-key verification.
+   * @remarks
+   * A trusted `key`, `contactId`, or `address` is required. This is
+   * intentionally stricter than `verifyMjksMap()`, which also supports
+   * self-reported envelope keys. Path-first tamper detection and content-hash
+   * relocation semantics are preserved. Sources must yield the exact canonical
+   * unsigned bytes; this wrapper does not perform format-aware rewriting.
    *
-   * @param mapInput - MJKSMAP object, Blob, or bytes.
-   * @param files - Relative paths and one-shot canonical byte sources.
-   * @param options - Trusted signer, verification policy, and progress settings.
+   * Batch metadata and byte-source descriptors are checked before parsing the
+   * manifest or consuming a source. The core parser remains responsible for
+   * bounded MJKSMAP container and envelope format validation.
+   *
+   * @param mapInput - Parsed MJKSMAP model, Blob, or encoded MJKSMAP bytes.
+   * @param files - Non-empty batch of current relative paths and one-shot
+   *   canonical byte sources, optionally with exact declared lengths.
+   * @param options - Trusted signer resolution, verification policy, and
+   *   streaming chunk, size, cancellation, and progress settings.
+   * @returns Per-file verification outcomes, aggregate summary, missing entries,
+   *   and a trusted-key indicator.
+   * @throws {TypeError} When file metadata or byte-source descriptors are invalid.
+   * @throws {Error} When manifest parsing, signer resolution, streaming, or
+   *   verification setup fails.
    */
   async verifyMjksMapStream(
     mapInput: MjksMapInput,
@@ -4435,10 +4606,21 @@ export class MajikSignatureClient extends MajikKeyClient<
     }
   }
 
+  /**
+   * Whether at least one managed signing session is currently active.
+   *
+   * This reports the client's signing-session scope; it is not a guarantee
+   * that a particular account is unlocked outside that scope.
+   */
   get isSigningSessionActive(): boolean {
     return this._signingSessionDepth > 0;
   }
 
+  /**
+   * Clear the managed signing-session depth during explicit recovery or teardown.
+   *
+   * This does not delete key material or change the one-time-unlock preference.
+   */
   forceEndSigningSession(): void {
     this._signingSessionDepth = 0;
     return;
