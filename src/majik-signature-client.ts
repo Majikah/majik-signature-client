@@ -29,6 +29,10 @@ import {
 
 import type {
   BatchVerifyOptions,
+  BatchStreamingOptions,
+  BatchStreamingVerifyOptions,
+  StreamingBatchFileInput,
+  StreamingBatchVerifyInput,
   EnvelopeInfo,
   EnvelopeInput,
   ExpectedSigner,
@@ -229,6 +233,22 @@ export type MjksMapInput = MajikSignatureMap | Blob | Uint8Array;
  *  Verification options for MJKS maps, including trusted contact, address, or key resolution.
  */
 export interface MjksMapVerifyOptions extends BatchVerifyOptions {
+  /** Trusted contact identifier used to resolve signer public keys. */
+  contactId?: string;
+  /** Trusted Majik public-key address used to resolve a signer. */
+  address?: MajikKeyAddress;
+  /** Trusted MajikKey used for verification. */
+  key?: MajikKey;
+}
+
+/**
+ * Options for streaming MJKSMAP verification.
+ *
+ * Streaming verification requires a resolved trusted signer key because the
+ * core streaming verifier hashes each file once and verifies against one
+ * supplied public-key set. Use verifyMjksMap() for self-reported-key mode.
+ */
+export interface MjksMapStreamingVerifyOptions extends BatchStreamingVerifyOptions {
   /** Trusted contact identifier used to resolve signer public keys. */
   contactId?: string;
   /** Trusted Majik public-key address used to resolve a signer. */
@@ -3739,6 +3759,66 @@ export class MajikSignatureClient extends MajikKeyClient<
   }
 
   /**
+   * Sign canonical byte streams as detached batch signatures without
+   * materializing the source files. The existing buffered batch API remains
+   * available as signBatchDetached().
+   *
+   * @param files - Unique manifest paths and one-shot canonical byte sources.
+   * @param options - Batch output, streaming, progress, and account settings.
+   * @param source - History source recorded for successfully signed outputs.
+   */
+  async signBatchDetachedStream(
+    files: StreamingBatchFileInput[],
+    options?: BatchStreamingOptions & { accountId?: string },
+    source: HistorySource = HistorySources.SYSTEM,
+  ): ReturnType<typeof MajikSignature.signBatchDetachedStream> {
+    const { accountId, ...streamOptions } = options ?? {};
+
+    return this._withSigningKey(accountId, "signBatchDetachedStream", async (key) => {
+      const result = await MajikSignature.signBatchDetachedStream(
+        files,
+        key,
+        streamOptions,
+      );
+      const identity = this._identityFromKey(key);
+
+      if (result.mode === "map") {
+        if (result.map.size > 0) {
+          const bytes = new Uint8Array(await result.mapBlob.arrayBuffer());
+          const digest = await this._sha256Base64(bytes);
+          this._recordHistory(key.fingerprint, {
+            reference_id: digest,
+            historyType: HistoryTypes.SIGN,
+            status: HistoryStatuses.SUCCESS,
+            source,
+            operation: { digest, detached: true, sealed: false, tsa: false },
+            signerCount: 1,
+            data: bytes,
+            identity,
+          }).catch((err) => console.warn(err));
+        }
+      } else {
+        for (const { blob } of result.signatures) {
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const digest = await this._sha256Base64(bytes);
+          this._recordHistory(key.fingerprint, {
+            reference_id: digest,
+            historyType: HistoryTypes.SIGN,
+            status: HistoryStatuses.SUCCESS,
+            source,
+            operation: { digest, detached: true, sealed: false, tsa: false },
+            signerCount: 1,
+            data: bytes,
+            identity,
+          }).catch((err) => console.warn(err));
+        }
+      }
+
+      return result;
+    });
+  }
+
+  /**
    * Add the active account's signature to EVERY listed file in an existing map.
    * (Core signBatchDetached always starts a fresh map — it has no existingMap
    * option — so multi-signer batches are composed here, entry by entry, through
@@ -3945,6 +4025,68 @@ export class MajikSignatureClient extends MajikKeyClient<
       };
     } catch (err) {
       this._emit("error", err, { context: "verifyMjksMap" });
+      throw err;
+    }
+  }
+
+  /**
+   * Verify canonical byte streams against a MJKSMAP manifest without
+   * materializing their contents. A trusted signer key/contact is required.
+   *
+   * Path-first tamper detection and content-hash relocation semantics match
+   * verifyMjksMap(). The existing method remains available for self-reported
+   * envelope-key verification.
+   *
+   * @param mapInput - MJKSMAP object, Blob, or bytes.
+   * @param files - Relative paths and one-shot canonical byte sources.
+   * @param options - Trusted signer, verification policy, and progress settings.
+   */
+  async verifyMjksMapStream(
+    mapInput: MjksMapInput,
+    files: StreamingBatchVerifyInput[],
+    options?: MjksMapStreamingVerifyOptions,
+  ): Promise<MjksMapVerifyResult> {
+    try {
+      const map = await MajikSignatureMap.from(mapInput);
+      const publicKeys = await this._resolveSignerPublicKeys(options);
+      if (!publicKeys) {
+        throw new Error(
+          "Streaming MJKSMAP verification requires a trusted key, contactId, or address. Use verifyMjksMap() for self-reported-key verification.",
+        );
+      }
+
+      const results = await MajikSignature.verifyFilesFromMjksMapStream(
+        map,
+        files,
+        publicKeys,
+        {
+          expectedSignerId: options?.expectedSignerId,
+          now: options?.now,
+          requireAllPresent: options?.requireAllPresent,
+          streaming: options?.streaming,
+          onProgress: options?.onProgress,
+        },
+      );
+
+      const covered = new Set<string>();
+      for (const file of files) covered.add(this._normalizeMapPath(file.path));
+      for (const result of results) {
+        if (result.relocatedFrom) {
+          covered.add(this._normalizeMapPath(result.relocatedFrom));
+        }
+      }
+      const missingFromBatch = map.entries
+        .map((entry) => entry.path)
+        .filter((path) => !covered.has(path));
+
+      return {
+        results,
+        summary: MajikSignature.summarizeBatchVerification(results),
+        missingFromBatch,
+        trustedKeys: true,
+      };
+    } catch (err) {
+      this._emit("error", err, { context: "verifyMjksMapStream" });
       throw err;
     }
   }
