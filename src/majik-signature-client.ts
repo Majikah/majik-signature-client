@@ -312,15 +312,22 @@ function validateStreamingBatchInputs(
   const fail = (message: string): never => {
     throw new TypeError(`${operation}: ${message}`);
   };
-  if (!Array.isArray(files)) fail("files must be an array");
-  if (files.length === 0) fail("at least one file is required");
+  if (!Array.isArray(files)) {
+    throw new TypeError(`${operation}: files must be an array`);
+  }
+  if (files.length === 0) {
+    throw new TypeError(`${operation}: at least one file is required`);
+  }
   if (files.length > MAX_STREAMING_BATCH_FILES) {
-    fail(`batch exceeds the ${MAX_STREAMING_BATCH_FILES}-file client limit`);
+    throw new TypeError(
+      `${operation}: batch exceeds the ${MAX_STREAMING_BATCH_FILES}-file client limit`,
+    );
   }
 
+  const batch: unknown[] = files;
   const seen = new Set<string>();
-  for (let index = 0; index < files.length; index++) {
-    const candidate: unknown = files[index];
+  for (let index = 0; index < batch.length; index++) {
+    const candidate: unknown = batch[index];
     if (!candidate || typeof candidate !== "object") {
       fail(`files[${index}] must be an object`);
     }
@@ -329,13 +336,14 @@ function validateStreamingBatchInputs(
     if (typeof path !== "string" || path.trim().length === 0) {
       fail(`files[${index}].path must be a non-empty string`);
     }
+    const validatedPath = path as string;
     if (
-      path.length > MAX_STREAMING_BATCH_PATH_CHARS ||
-      /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(path)
+      validatedPath.length > MAX_STREAMING_BATCH_PATH_CHARS ||
+      /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(validatedPath)
     ) {
       fail(`files[${index}].path exceeds the supported length or contains unsafe control characters`);
     }
-    const normalizedPath = normalizeStreamingManifestPath(path);
+    const normalizedPath = normalizeStreamingManifestPath(validatedPath);
     if (
       !normalizedPath ||
       normalizedPath.split("/").some((segment) => segment === "..")
@@ -4095,8 +4103,6 @@ export class MajikSignatureClient extends MajikKeyClient<
     source: HistorySource = HistorySources.SYSTEM,
   ): Promise<MjksMapVerifyResult> {
     try {
-      validateStreamingBatchInputs(files, "verifyMjksMapStream");
-      validateStreamingMaxBytes(options?.streaming?.maxBytes, "verifyMjksMapStream");
       const map = await MajikSignatureMap.from(mapInput);
       const publicKeys = await this._resolveSignerPublicKeys(options);
 
@@ -4218,6 +4224,8 @@ export class MajikSignatureClient extends MajikKeyClient<
     options?: MjksMapStreamingVerifyOptions,
   ): Promise<MjksMapVerifyResult> {
     try {
+      validateStreamingBatchInputs(files, "verifyMjksMapStream");
+      validateStreamingMaxBytes(options?.streaming?.maxBytes, "verifyMjksMapStream");
       const map = await MajikSignatureMap.from(mapInput);
       const publicKeys = await this._resolveSignerPublicKeys(options);
       if (!publicKeys) {
