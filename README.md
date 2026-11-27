@@ -66,6 +66,55 @@ if (result.valid) {
 }
 ```
 
+### 2a. Streaming Batch Signing & Verification
+
+The 1.6.0 client exposes the core streaming batch APIs without changing the
+existing buffered methods. Pass one-shot byte sources (for example
+`Blob.stream()`) and the known source length so the core can detect truncated
+or overlong input.
+
+```typescript
+const signed = await client.signBatchDetachedStream(
+  selectedFiles.map((file) => ({
+    path: file.relativePath,
+    source: file.blob.stream(),
+    totalBytes: file.blob.size,
+    mimeType: file.blob.type,
+  })),
+  {
+    mode: "map",
+    continueOnError: true,
+    onProgress(progress) {
+      console.log(progress.path, progress.bytesProcessed, progress.totalBytes);
+    },
+  },
+);
+
+if (signed.mode === "map") {
+  await saveFile("batch.mjksmap", signed.mapBlob);
+}
+
+const verified = await client.verifyMjksMapStream(
+  signed.mapBlob,
+  selectedFiles.map((file) => ({
+    path: file.relativePath,
+    source: file.blob.stream(),
+    totalBytes: file.blob.size,
+  })),
+  { key: trustedSignerKey },
+);
+```
+
+Streaming MJKSMAP verification requires a trusted `key`, `contactId`, or
+`address`. This keeps the streaming verification path anchored to a resolved
+public-key identity. Use the existing `verifyMjksMap()` method when self-reported
+envelope-key verification is required.
+
+Files are consumed sequentially. These detached batch APIs sign or verify the
+exact canonical bytes supplied; they do not strip embedded signatures or apply
+native format-aware rewrites. Keep using `signFile()`, `signFileDetached()`,
+and the existing Rust/Tauri path-streaming APIs for format-aware file handling.
+
 ### 3. Contact Management
 
 Add external contacts and organize them into groups for streamlined verification.
