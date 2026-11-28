@@ -1799,7 +1799,7 @@ describe("MajikSignatureClient — comprehensive real-crypto unit/integration su
         totalBytes: 1,
       }));
       await expect(client.signBatchDetachedStream(oversized)).rejects.toThrow(
-        /10,000-file client limit/i,
+        /10000-file client limit/i,
       );
     });
 
