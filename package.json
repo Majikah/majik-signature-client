@@ -23,7 +23,7 @@
     "digital-signature",
     "content-signing",
     "content-verification",
-    "tamper-proof",
+    "tamper-evident",
     "tamper-detection",
     "post-quantum",
     "post-quantum-cryptography",
