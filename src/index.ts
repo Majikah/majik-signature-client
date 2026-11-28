@@ -1,3 +1,11 @@
+/**
+ * Public package entry point.
+ *
+ * Re-exports the high-level signature client, its public types and managers,
+ * storage adapters, backup helpers, and the underlying Majik Key primitives.
+ * Prefer this entry point unless an application intentionally depends on a
+ * narrower module path.
+ */
 export * from "./majik-signature-client";
 export type * from "./core/types";
 export * from "./core/contacts/majik-contact-manager";

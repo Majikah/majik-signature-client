@@ -6,12 +6,12 @@ Designed to be used natively within the Majikah ecosystem, it inherits all core 
 
 ## Core Capabilities
 
-*   **Integrated Key & Account Management**: Extends `MajikKeyClient` to seamlessly handle account lifecycles and cryptographic unlocking. Accounts can easily be shared alongside `MajikMessage`.
+*   **Integrated Key & Account Management**: Extends `MajikKeyClient` to seamlessly handle account lifecycles and cryptographic unlocking. 
 *   **Contact & Group Directory**: Utilizes `MajikContactManager` for full contact CRUD operations, including system/user groups, favorites, and blocked lists.
-*   **Post-Quantum Signing & Verification**: Provides intuitive methods (`signFile`, `verifyFile`, `batchSignFiles`) for text, raw bytes, and file blobs. Verifications automatically resolve public keys from the internal contact directory or active keystore.
+*   **Post-Quantum Signing & Verification**: Provides intuitive methods (`signFile`, `verifyFile`, `batchSignFiles`) for text, raw bytes, and file blobs. Verification can use explicitly trusted keys, local accounts, or contacts. Self-reported envelope keys are a separate mode and do not, by themselves, establish signer identity.
 *   **Multi-sig & Envelope Sealing**: Built-in support for restricted allowlists (`expectedSigners`), multi-sig pending states, and cryptographic sealing to prevent further modifications to a file.
 *   **Encrypted Stamp Assets**: Uses `MajikSignatureStampManager` to securely create, encrypt, and manage reusable assets (signatures, audio, text) bound to the user's ML-KEM keys.
-*   **Data Backup & Restore**: Robust export and hydration capabilities for contacts, stamps, and user preferences utilizing `MajikCompressedJSON` and protected by strict magic byte headers.
+*   **Data Backup & Restore**: Export and restore helpers for contacts, stamps, and supported application data using `MajikCompressedJSON` and format-specific magic headers.
 
 ---
 
@@ -66,6 +66,55 @@ if (result.valid) {
 }
 ```
 
+### 2a. Streaming Batch Signing & Verification
+
+The 1.6.0 client exposes the core streaming batch APIs without changing the
+existing buffered methods. Pass one-shot byte sources (for example
+`Blob.stream()`) and the known source length so the core can detect truncated
+or overlong input.
+
+```typescript
+const signed = await client.signBatchDetachedStream(
+  selectedFiles.map((file) => ({
+    path: file.relativePath,
+    source: file.blob.stream(),
+    totalBytes: file.blob.size,
+    mimeType: file.blob.type,
+  })),
+  {
+    mode: "map",
+    continueOnError: true,
+    onProgress(progress) {
+      console.log(progress.path, progress.bytesProcessed, progress.totalBytes);
+    },
+  },
+);
+
+if (signed.mode === "map") {
+  await saveFile("batch.mjksmap", signed.mapBlob);
+}
+
+const verified = await client.verifyMjksMapStream(
+  signed.mapBlob,
+  selectedFiles.map((file) => ({
+    path: file.relativePath,
+    source: file.blob.stream(),
+    totalBytes: file.blob.size,
+  })),
+  { key: trustedSignerKey },
+);
+```
+
+Streaming MJKSMAP verification requires a trusted `key`, `contactId`, or
+`address`. This keeps the streaming verification path anchored to a resolved
+public-key identity. Use the existing `verifyMjksMap()` method when self-reported
+envelope-key verification is required.
+
+Files are consumed sequentially. These detached batch APIs sign or verify the
+exact canonical bytes supplied; they do not strip embedded signatures or apply
+native format-aware rewrites. Keep using `signFile()`, `signFileDetached()`,
+and the existing Rust/Tauri path-streaming APIs for format-aware file handling.
+
 ### 3. Contact Management
 
 Add external contacts and organize them into groups for streamlined verification.
@@ -98,7 +147,7 @@ const decryptedBytes = await client.decryptStampContent(stamp.id);
 
 ### 5. App Data Backups
 
-Export or restore the entire application state—including contacts, stamps, and preferences—into a `.MJKB` portable blob.
+Export or restore supported application state—including contacts, stamps, and preferences—using the client's portable backup format.
 
 ```typescript
 // Export
@@ -109,6 +158,28 @@ const restoreResults = await client.restoreAppData(backupBlob);
 console.log(`Restored ${restoreResults.contacts} contacts.`);
 ```
 
+
+
+## Input bounds and streaming behavior
+
+The 1.6.0 streaming batch wrappers apply client-side checks before unlocking a signing account or consuming a source:
+
+- Up to 10,000 files per batch, matching the core MJKSMAP entry limit.
+- Manifest paths are limited to 4,096 UTF-16 code units and reject unsafe control characters and `..` path segments after core-compatible normalization.
+- Optional MIME metadata is limited to 1,024 UTF-16 code units and rejects control characters.
+- Optional `totalBytes` declarations must be non-negative safe integers. The core hasher checks the actual stream against that declared length.
+- `streaming.maxBytes`, when supplied, must be a non-negative safe integer and is enforced per file by the core streaming hasher.
+- Sources are consumed sequentially. The core streaming policy defaults to 1 MiB chunks and supports its documented 64 KiB–64 MiB chunk range.
+
+The core library remains responsible for MJKSMAP/MJKSIG parsing, envelope validation, cryptographic input checks, and stream hashing. The client deliberately does not duplicate those parsers. The MJKSMAP format has separate core limits, including a 16 MiB CBOR payload and a 10,000-entry manifest.
+
+## Security and trust boundaries
+
+Signature verification establishes that bytes verify against the supplied public keys; it does not independently establish who controls those keys. Resolve keys through a trusted channel or local contact directory and check the signer identity before making authorization decisions. Streaming MJKSMAP verification therefore requires a trusted signer key/contact/address. Buffered verification retains its separate self-reported-key mode.
+
+These APIs do not make untrusted files safe to open, render, extract, or execute. Apply application-level file-type, size, and authorization policy before processing. Keep private keys and recovery phrases secret, and avoid logging source contents or key material. The TypeScript streaming batch API signs the exact canonical bytes supplied by the caller; it does not strip embedded signature metadata or perform format-aware rewriting.
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting guidance and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
